@@ -1,0 +1,973 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SongFinder Pro - Public Version</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { background-color: #0f172a; color: #f8fafc; }
+        .glass-card { background: rgba(30, 41, 59, 0.7); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.08); }
+        .pulse-wave { animation: pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+        @keyframes pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: .5; transform: scale(1.05); } }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col justify-between p-4 md:p-8 font-sans">
+
+    <!-- Header -->
+    <header class="max-w-3xl mx-auto w-full flex items-center justify-between pb-6 border-b border-slate-800">
+        <div class="flex items-center space-x-3">
+            <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-500 to-purple-500 flex items-center justify-center shadow-lg shadow-indigo-500/30">
+                <i class="fa-solid fa-music text-white text-xl"></i>
+            </div>
+            <div>
+                <h1 class="font-bold text-xl tracking-tight text-white">SongFinder <span class="text-xs px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">No Backend</span></h1>
+                <p class="text-xs text-slate-400">Deteksi Lagu + Player Audio & YouTube Stabil</p>
+            </div>
+        </div>
+        <button onclick="toggleSettingsModal()" class="p-2.5 rounded-xl glass-card text-slate-300 hover:text-white hover:bg-slate-800 transition text-sm flex items-center gap-2">
+            <i class="fa-solid fa-gear text-indigo-400"></i>
+            <span class="hidden sm:inline text-xs">Pengaturan API</span>
+        </button>
+    </header>
+
+    <!-- Content Utama -->
+    <main class="max-w-3xl mx-auto w-full my-6 flex-1">
+        
+        <!-- Tab Navigation -->
+        <div class="flex rounded-2xl bg-slate-900/80 p-1.5 border border-slate-800 mb-6">
+            <button id="tabLinkBtn" onclick="switchTab('link')" class="flex-1 py-3 px-4 rounded-xl font-medium text-sm transition flex items-center justify-center gap-2 bg-indigo-600 text-white shadow-md">
+                <i class="fa-brands fa-tiktok text-sm"></i>
+                <i class="fa-brands fa-youtube text-sm text-red-400"></i>
+                <span>Link TikTok / YouTube</span>
+            </button>
+            <button id="tabFileBtn" onclick="switchTab('file')" class="flex-1 py-3 px-4 rounded-xl font-medium text-sm transition flex items-center justify-center gap-2 text-slate-400 hover:text-slate-200">
+                <i class="fa-solid fa-file-video text-base"></i>
+                <span>Upload File Video</span>
+            </button>
+        </div>
+
+        <!-- Input Card -->
+        <div class="glass-card rounded-3xl p-5 md:p-8 shadow-2xl">
+            
+            <!-- Tab Link Input -->
+            <div id="tabLinkContent" class="space-y-4">
+                <label class="block text-sm font-medium text-slate-300">Tempel Link TikTok, YouTube, atau URL Media Langsung</label>
+                <div class="relative">
+                    <input type="url" id="mediaUrl" placeholder="Tempel link TikTok/YouTube atau URL file audio/video langsung..." 
+                           class="w-full bg-slate-900/90 border border-slate-700/80 rounded-2xl px-4 py-3.5 pl-11 pr-24 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition">
+                    <i class="fa-solid fa-link absolute left-4 top-4 text-slate-500"></i>
+                    
+                    <div class="absolute right-2 top-2 bottom-2 flex items-center gap-1">
+                        <button onclick="clearInputUrl(event)" title="Hapus Teks" class="w-8 h-8 bg-slate-800 hover:bg-rose-900/50 text-slate-400 hover:text-rose-400 rounded-xl text-xs font-bold transition flex items-center justify-center">
+                            <i class="fa-solid fa-xmark text-sm"></i>
+                        </button>
+                        <button onclick="pasteClipboard()" title="Tempel" class="px-3 h-8 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-medium transition flex items-center gap-1">
+                            <i class="fa-solid fa-paste"></i>
+                            <span class="hidden sm:inline">Paste</span>
+                        </button>
+                    </div>
+                </div>
+                <p class="text-[10px] text-slate-500">
+                    Tanpa Render/backend: URL file media langsung memakai AudD Standard. Link halaman TikTok/YouTube
+                    akan dicoba lewat AudD Enterprise (jika token akunmu punya akses). Jika tidak tersedia, gunakan Upload File Video.
+                </p>
+
+                <!-- TikTok / YouTube Link Status -->
+                <div class="flex items-center justify-between gap-3 p-3 bg-slate-900/70 rounded-2xl border border-slate-800">
+                    <div class="flex items-center gap-2 min-w-0">
+                        <div id="socialLinkStatusDot" class="w-2.5 h-2.5 rounded-full bg-slate-600 shrink-0"></div>
+                        <div class="min-w-0">
+                            <p class="text-[11px] font-semibold text-slate-300">Link TikTok/YouTube</p>
+                            <p id="socialLinkStatus" class="text-[10px] text-slate-500 truncate">Masukkan link untuk memeriksa status</p>
+                        </div>
+                    </div>
+                    <button id="socialLinkBtn" onclick="checkSocialLinkStatus()" type="button" class="shrink-0 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-[10px] font-medium transition disabled:opacity-40 disabled:cursor-not-allowed">
+                        Cek Link
+                    </button>
+                </div>
+            </div>
+
+            <!-- Tab File Input -->
+            <div id="tabFileContent" class="space-y-4 hidden">
+                <label class="block text-sm font-medium text-slate-300">Pilih File Video / Audio</label>
+                <div onclick="triggerFileInput()" class="border-2 border-dashed border-slate-700 hover:border-indigo-500/80 rounded-2xl p-6 text-center cursor-pointer bg-slate-900/40 hover:bg-slate-900/80 transition group">
+                    <input type="file" id="mediaFileInput" accept="video/*,audio/*" class="hidden" onchange="handleFileSelect(event)">
+                    <div class="w-12 h-12 rounded-full bg-indigo-500/10 text-indigo-400 flex items-center justify-center mx-auto mb-3 group-hover:scale-110 transition">
+                        <i class="fa-solid fa-cloud-arrow-up text-xl"></i>
+                    </div>
+                    <p id="fileNameDisplay" class="text-sm text-slate-300 font-medium">Ketuk untuk memilih file (MP4, MOV, MP3, WAV)</p>
+                </div>
+            </div>
+
+            <!-- Options Section -->
+            <div class="mt-6 pt-6 border-t border-slate-800 space-y-4">
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs text-slate-400 mb-1.5">Bagian Waktu Pemindaian</label>
+                        <select id="scanSegment" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500">
+                            <option value="auto" selected>⚡ Otomatis (Coba Awal, Tengah, & Akhir)</option>
+                            <option value="0">📍 Awal Video (0 - 10 Detik)</option>
+                            <option value="10">📍 Tengah Video (10 - 20 Detik)</option>
+                            <option value="20">📍 Akhir Video (20 - 30 Detik)</option>
+                        </select>
+                    </div>
+                    <div class="flex items-center justify-between p-2.5 bg-slate-900/80 rounded-xl border border-slate-800">
+                        <div class="pr-2">
+                            <p class="text-xs font-medium text-slate-200">Filter Suara Bising</p>
+                            <p class="text-[10px] text-slate-500">Bantu perjelas instrumen musik</p>
+                        </div>
+                        <label class="relative inline-flex items-center cursor-pointer">
+                            <input type="checkbox" id="noiseFilterToggle" class="sr-only peer" checked>
+                            <div class="w-9 h-5 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-indigo-600"></div>
+                        </label>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Action Button -->
+            <button id="scanBtn" onclick="startRecognition()" class="w-full mt-6 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-semibold py-4 px-6 rounded-2xl shadow-lg shadow-indigo-500/25 transition active:scale-[0.99] flex items-center justify-center gap-2">
+                <i class="fa-solid fa-magnifying-glass font-bold"></i>
+                <span id="scanBtnText">Cari Judul & Deteksi Lagu</span>
+            </button>
+        </div>
+
+        <!-- Status & Progress Bar -->
+        <div id="statusContainer" class="hidden glass-card rounded-3xl p-6 mt-6 text-center space-y-4">
+            <div class="w-16 h-16 rounded-full bg-indigo-500/10 border border-indigo-500/30 flex items-center justify-center mx-auto text-indigo-400 text-2xl pulse-wave">
+                <i class="fa-solid fa-compact-disc fa-spin"></i>
+            </div>
+            <div>
+                <h3 id="statusTitle" class="font-bold text-slate-200">Mengekstrak Audio...</h3>
+                <p id="statusDesc" class="text-xs text-slate-400 mt-1">Menyiapkan sampel suara untuk dicocokkan...</p>
+            </div>
+            <div class="w-full bg-slate-800 rounded-full h-2 overflow-hidden">
+                <div id="progressBar" class="bg-indigo-500 h-full w-1/4 transition-all duration-300"></div>
+            </div>
+        </div>
+
+        <!-- Result Container -->
+        <div id="resultContainer" class="hidden glass-card rounded-3xl p-6 md:p-8 mt-6 space-y-6">
+            <div class="flex items-center justify-between pb-4 border-b border-slate-800">
+                <span class="text-xs font-semibold text-emerald-400 flex items-center gap-1.5 bg-emerald-500/10 px-3 py-1 rounded-full border border-emerald-500/20">
+                    <i class="fa-solid fa-circle-check"></i> Lagu Ditemukan!
+                </span>
+                <span id="detectedTimeBadge" class="text-xs text-slate-400 bg-slate-800 px-2.5 py-1 rounded-lg">
+                    Posisi: Detik 0-10
+                </span>
+            </div>
+
+            <div class="flex flex-col md:flex-row items-center gap-6">
+                <img id="albumArt" src="" alt="Cover Album" class="w-32 h-32 md:w-40 md:h-40 rounded-2xl object-cover shadow-2xl border border-slate-700">
+
+                <div class="flex-1 text-center md:text-left space-y-2 w-full">
+                    <h2 id="songTitle" class="text-2xl font-bold text-white tracking-tight">Judul Lagu</h2>
+                    <p id="songArtist" class="text-lg font-medium text-indigo-400">Nama Penyanyi</p>
+                    <p id="songAlbum" class="text-xs text-slate-400"><i class="fa-solid fa-compact-disc mr-1"></i> Album: -</p>
+                </div>
+            </div>
+
+            <div class="p-4 bg-slate-900/90 rounded-2xl border border-indigo-500/30 space-y-4">
+                <div class="flex items-center justify-between">
+                    <span class="text-xs font-semibold text-indigo-300 flex items-center gap-2">
+                        <i class="fa-solid fa-circle-play text-indigo-400 text-sm"></i> Tes Audio & Video Langsung
+                    </span>
+                    <span id="playerStatusText" class="text-[10px] text-slate-400">Memuat Pemutar...</span>
+                </div>
+
+                <div id="audioSampleWrapper" class="hidden bg-slate-800/80 p-3 rounded-xl border border-slate-700">
+                    <p class="text-[11px] text-slate-300 mb-1.5 font-medium"><i class="fa-solid fa-music text-indigo-400 mr-1"></i> Audio Sampel Spotify:</p>
+                    <audio id="audioSample" controls class="w-full h-9 rounded-lg"></audio>
+                </div>
+
+                <div id="ytPlayerWrapper" class="hidden relative w-full rounded-xl overflow-hidden aspect-video bg-black/80 border border-slate-800">
+                    <iframe id="ytEmbedPlayer" class="w-full h-full border-0" 
+                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
+                            allowfullscreen></iframe>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
+                <a id="spotifyBtn" href="#" target="_blank" class="py-2.5 px-4 bg-[#1DB954]/10 hover:bg-[#1DB954]/20 border border-[#1DB954]/30 text-[#1DB954] rounded-xl text-xs font-semibold flex items-center justify-center gap-2 transition">
+                    <i class="fa-brands fa-spotify text-base"></i> Buka di Spotify
+                </a>
+                <a id="youtubeBtn" href="#" target="_blank" class="py-2.5 px-4 bg-[#FF0000]/10 hover:bg-[#FF0000]/20 border border-[#FF0000]/30 text-[#FF0000] rounded-xl text-xs font-semibold flex items-center justify-center gap-2 transition">
+                    <i class="fa-brands fa-youtube text-base"></i> Tonton di YouTube
+                </a>
+                <a id="appleBtn" href="#" target="_blank" class="py-2.5 px-4 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl text-xs font-semibold flex items-center justify-center gap-2 transition">
+                    <i class="fa-brands fa-apple text-base"></i> Apple Music
+                </a>
+            </div>
+
+            <button onclick="resetApp()" class="w-full py-3 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-2xl text-xs font-medium transition">
+                <i class="fa-solid fa-rotate-left mr-1"></i> Cari Lagu Lain
+            </button>
+        </div>
+
+    </main>
+
+    <!-- Modal Settings / API Key -->
+    <div id="settingsModal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+        <div class="glass-card max-w-md w-full rounded-3xl p-6 space-y-4 border border-slate-700 shadow-2xl">
+            <div class="flex items-center justify-between pb-3 border-b border-slate-800">
+                <h3 class="font-bold text-white text-base"><i class="fa-solid fa-gear text-indigo-400 mr-2"></i>Pengaturan AudD</h3>
+                <button onclick="toggleSettingsModal()" class="text-slate-400 hover:text-white"><i class="fa-solid fa-xmark text-lg"></i></button>
+            </div>
+            
+            <div class="space-y-3 text-xs text-slate-300">
+                <div class="pt-2 border-t border-slate-800">
+                    <label class="block mb-1 font-semibold text-slate-200">AudD API Token:</label>
+                    <input type="text" id="apiTokenInput" placeholder="Masukkan API Token AudD" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-indigo-500">
+                    <p class="text-[10px] text-slate-400 mt-1">Token disimpan hanya di browser ini. Jangan menaruh token pribadi langsung di kode publik.</p>
+                </div>
+            </div>
+
+            <div class="flex gap-2 pt-2">
+                <button onclick="saveSettings()" class="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white font-medium py-2.5 rounded-xl text-xs transition">Simpan Pengaturan</button>
+                <button onclick="toggleSettingsModal()" class="px-4 bg-slate-800 text-slate-300 rounded-xl text-xs hover:bg-slate-700 transition">Batal</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- JavaScript Aplikasi -->
+    <script>
+        let isProcessing = false;
+        let currentTab = 'link';
+        let selectedFile = null;
+        let createdObjectUrl = null;
+        let globalAudioCtx = null;
+
+        function getUserApiToken() {
+            try {
+                return localStorage.getItem('AUDD_API_TOKEN') || 'test';
+            } catch (e) {
+                return 'test';
+            }
+        }
+
+        function escapeHtml(str) {
+            if (!str) return '';
+            return String(str)
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+        }
+
+        function cleanUrlInput(inputStr) {
+            if (!inputStr) return '';
+            const match = inputStr.match(/https?:\/\/[^\s]+/i);
+            return match ? match[0] : inputStr.trim();
+        }
+
+        function setSocialLinkStatus(message, state = 'idle') {
+            const text = document.getElementById('socialLinkStatus');
+            const dot = document.getElementById('socialLinkStatusDot');
+            if (!text || !dot) return;
+
+            text.textContent = message;
+            dot.className = 'w-2.5 h-2.5 rounded-full shrink-0';
+
+            const stateClasses = {
+                idle: 'bg-slate-600',
+                ready: 'bg-indigo-500',
+                checking: 'bg-amber-400 animate-pulse',
+                success: 'bg-emerald-500',
+                error: 'bg-rose-500'
+            };
+            dot.classList.add(...(stateClasses[state] || stateClasses.idle).split(' '));
+        }
+
+        function checkSocialLinkStatus() {
+            const input = document.getElementById('mediaUrl');
+            const button = document.getElementById('socialLinkBtn');
+            const cleanUrl = cleanUrlInput(input ? input.value : '');
+
+            if (!cleanUrl) {
+                setSocialLinkStatus('Masukkan link terlebih dahulu', 'error');
+                if (input) input.focus();
+                return;
+            }
+
+            if (!isSocialPageUrl(cleanUrl)) {
+                setSocialLinkStatus('Bukan link halaman TikTok/YouTube', 'error');
+                return;
+            }
+
+            setSocialLinkStatus('Link terdeteksi — siap diproses AudD Enterprise', 'ready');
+            if (button) button.textContent = 'Siap';
+        }
+
+        function initAudioContext() {
+            if (!globalAudioCtx || globalAudioCtx.state === 'closed') {
+                const AudioCtxClass = window.AudioContext || window.webkitAudioContext;
+                if (AudioCtxClass) {
+                    globalAudioCtx = new AudioCtxClass();
+                }
+            }
+            if (globalAudioCtx && globalAudioCtx.state === 'suspended') {
+                globalAudioCtx.resume().catch(() => {});
+            }
+            return globalAudioCtx;
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const tokenInput = document.getElementById('apiTokenInput');
+            
+            if (tokenInput) {
+                const currentToken = getUserApiToken();
+                tokenInput.value = currentToken === 'test' ? '' : currentToken;
+            }
+        });
+
+        document.addEventListener('input', (event) => {
+            if (event.target && event.target.id === 'mediaUrl') {
+                const value = cleanUrlInput(event.target.value);
+                if (!value) {
+                    setSocialLinkStatus('Masukkan link untuk memeriksa status', 'idle');
+                    return;
+                }
+                if (isSocialPageUrl(value)) {
+                    setSocialLinkStatus('Link TikTok/YouTube terdeteksi', 'ready');
+                } else {
+                    setSocialLinkStatus('URL media langsung — memakai AudD Standard', 'ready');
+                }
+                const socialButton = document.getElementById('socialLinkBtn');
+                if (socialButton) socialButton.textContent = 'Cek Link';
+            }
+        });
+
+        function switchTab(tab) {
+            if (isProcessing) return;
+            currentTab = tab;
+            const linkBtn = document.getElementById('tabLinkBtn');
+            const fileBtn = document.getElementById('tabFileBtn');
+            const linkContent = document.getElementById('tabLinkContent');
+            const fileContent = document.getElementById('tabFileContent');
+
+            if (!linkBtn || !fileBtn || !linkContent || !fileContent) return;
+
+            if (tab === 'link') {
+                linkBtn.className = "flex-1 py-3 px-4 rounded-xl font-medium text-sm transition flex items-center justify-center gap-2 bg-indigo-600 text-white shadow-md";
+                fileBtn.className = "flex-1 py-3 px-4 rounded-xl font-medium text-sm transition flex items-center justify-center gap-2 text-slate-400 hover:text-slate-200";
+                linkContent.classList.remove('hidden');
+                fileContent.classList.add('hidden');
+            } else {
+                fileBtn.className = "flex-1 py-3 px-4 rounded-xl font-medium text-sm transition flex items-center justify-center gap-2 bg-indigo-600 text-white shadow-md";
+                linkBtn.className = "flex-1 py-3 px-4 rounded-xl font-medium text-sm transition flex items-center justify-center gap-2 text-slate-400 hover:text-slate-200";
+                fileContent.classList.remove('hidden');
+                linkContent.classList.add('hidden');
+            }
+        }
+
+        function clearInputUrl(e) {
+            if (e && e.preventDefault) e.preventDefault();
+            const input = document.getElementById('mediaUrl');
+            if (input) {
+                input.value = '';
+                setSocialLinkStatus('Masukkan link untuk memeriksa status', 'idle');
+                const socialButton = document.getElementById('socialLinkBtn');
+                if (socialButton) socialButton.textContent = 'Cek Link';
+                input.focus();
+            }
+        }
+
+        async function pasteClipboard() {
+            try {
+                if (navigator.clipboard && navigator.clipboard.readText) {
+                    const text = await navigator.clipboard.readText();
+                    const input = document.getElementById('mediaUrl');
+                    if (input && text) input.value = text.trim();
+                } else {
+                    alert('Clipboard API tidak didukung browser ini. Silakan tempel manual.');
+                }
+            } catch (err) {
+                alert('Gagal membaca clipboard. Silakan tempel secara manual.');
+            }
+        }
+
+        function triggerFileInput() {
+            const input = document.getElementById('mediaFileInput');
+            if (input) input.click();
+        }
+
+        function handleFileSelect(e) {
+            const file = e.target && e.target.files ? e.target.files[0] : null;
+            const display = document.getElementById('fileNameDisplay');
+            if (!file) return;
+
+            const isVideoOrAudio = file.type.startsWith('video/') || file.type.startsWith('audio/') ||
+                /\.(mp4|m4a|mov|avi|mkv|mp3|wav|ogg|flac|aac|webm)$/i.test(file.name);
+
+            if (!isVideoOrAudio) {
+                alert('Format file tidak didukung. Harap pilih file video atau audio.');
+                if (e.target) e.target.value = '';
+                return;
+            }
+
+            const maxSize = 150 * 1024 * 1024;
+            if (file.size > maxSize) {
+                alert('Ukuran file terlalu besar (maksimal 150 MB).');
+                if (e.target) e.target.value = '';
+                return;
+            }
+
+            selectedFile = file;
+            if (display) {
+                const sizeMb = (file.size / (1024 * 1024)).toFixed(1);
+                display.textContent = `Terpilih: ${file.name} (${sizeMb} MB)`;
+            }
+        }
+
+        function toggleSettingsModal() {
+            const modal = document.getElementById('settingsModal');
+            if (modal) modal.classList.toggle('hidden');
+        }
+
+        function saveSettings() {
+            const apiInput = document.getElementById('apiTokenInput');
+
+            try {
+                if (apiInput) {
+                    const val = apiInput.value.trim();
+                    localStorage.setItem('AUDD_API_TOKEN', val || 'test');
+                }
+                alert('Pengaturan berhasil disimpan!');
+            } catch (e) {
+                alert('Gagal menyimpan ke penyimpanan lokal browser.');
+            }
+            toggleSettingsModal();
+        }
+
+        function updateProgress(percent, title, desc) {
+            const statusContainer = document.getElementById('statusContainer');
+            const progressBar = document.getElementById('progressBar');
+            const statusTitle = document.getElementById('statusTitle');
+            const statusDesc = document.getElementById('statusDesc');
+
+            if (statusContainer) statusContainer.classList.remove('hidden');
+            if (progressBar) progressBar.style.width = `${percent}%`;
+            if (statusTitle && title) statusTitle.textContent = title;
+            if (statusDesc && desc) statusDesc.textContent = desc;
+        }
+
+        function hideProgress() {
+            const statusContainer = document.getElementById('statusContainer');
+            if (statusContainer) statusContainer.classList.add('hidden');
+        }
+
+        function cleanupObjectUrls() {
+            if (createdObjectUrl) {
+                URL.revokeObjectURL(createdObjectUrl);
+                createdObjectUrl = null;
+            }
+        }
+
+        function resetApp() {
+            cleanupObjectUrls();
+            const resultContainer = document.getElementById('resultContainer');
+            const mediaUrl = document.getElementById('mediaUrl');
+            const ytEmbed = document.getElementById('ytEmbedPlayer');
+            const audioSample = document.getElementById('audioSample');
+            const fileNameDisplay = document.getElementById('fileNameDisplay');
+            const fileInput = document.getElementById('mediaFileInput');
+
+            if (resultContainer) resultContainer.classList.add('hidden');
+            if (mediaUrl) mediaUrl.value = '';
+            setSocialLinkStatus('Masukkan link untuk memeriksa status', 'idle');
+            const socialButton = document.getElementById('socialLinkBtn');
+            if (socialButton) socialButton.textContent = 'Cek Link';
+            if (ytEmbed) ytEmbed.src = '';
+            if (audioSample) audioSample.src = '';
+            if (fileInput) fileInput.value = '';
+            selectedFile = null;
+            if (fileNameDisplay) fileNameDisplay.textContent = 'Ketuk untuk memilih file (MP4, MOV, MP3, WAV)';
+            hideProgress();
+        }
+
+        function isSocialPageUrl(targetUrl) {
+            try {
+                const host = new URL(targetUrl).hostname.toLowerCase().replace(/^www\./, '');
+                return host === 'tiktok.com' || host.endsWith('.tiktok.com') ||
+                       host === 'youtube.com' || host.endsWith('.youtube.com') ||
+                       host === 'youtu.be';
+            } catch (e) {
+                return false;
+            }
+        }
+
+        function normalizeEnterpriseResult(data) {
+            if (!data || data.status !== 'success' || !Array.isArray(data.result)) return null;
+
+            for (const chunk of data.result) {
+                const songs = Array.isArray(chunk?.songs) ? chunk.songs : [];
+                if (!songs.length) continue;
+                const best = [...songs].sort((a, b) => (Number(b.score) || 0) - (Number(a.score) || 0))[0];
+                if (best && (best.title || best.artist)) return best;
+            }
+            return null;
+        }
+
+        async function recognizeSocialPageUrl(targetUrl) {
+            const apiToken = getUserApiToken();
+            if (!apiToken) {
+                throw new Error('Masukkan AudD API Token di Pengaturan terlebih dahulu.');
+            }
+
+            // AudD Enterprise secara resmi menerima URL halaman yang berisi audio/video.
+            // Ini memungkinkan link TikTok/YouTube dicoba langsung tanpa server milik kita.
+            const formData = new FormData();
+            formData.append('api_token', apiToken);
+            formData.append('url', targetUrl);
+            formData.append('limit', '1');
+            formData.append('skip_first_seconds', '0');
+            formData.append('every', '1');
+
+            const controller = new AbortController();
+            const timer = setTimeout(() => controller.abort(), 30000);
+
+            try {
+                const res = await fetch('https://enterprise.audd.io/', {
+                    method: 'POST',
+                    body: formData,
+                    signal: controller.signal
+                });
+
+                const data = await res.json().catch(() => ({}));
+
+                if (res.status === 401 || res.status === 403) {
+                    throw new Error('Token AudD tidak memiliki akses Enterprise untuk memproses link halaman.');
+                }
+                if (res.status === 429) {
+                    throw new Error('Batas kuota AudD terlampaui.');
+                }
+                if (!res.ok) {
+                    throw new Error(`AudD Enterprise HTTP ${res.status}`);
+                }
+                if (data.status === 'error') {
+                    throw new Error(data.error?.error_message || 'AudD Enterprise tidak dapat memproses link tersebut.');
+                }
+
+                return normalizeEnterpriseResult(data);
+            } catch (e) {
+                if (e.name === 'AbortError') {
+                    throw new Error('AudD Enterprise timeout setelah 30 detik.');
+                }
+                throw e;
+            } finally {
+                clearTimeout(timer);
+            }
+        }
+
+        async function recognizeDirectMediaUrl(targetUrl) {
+            const apiToken = getUserApiToken();
+            if (!apiToken) {
+                throw new Error('Masukkan AudD API Token di Pengaturan terlebih dahulu.');
+            }
+
+            if (!/^https:\/\//i.test(targetUrl)) {
+                throw new Error('Link harus menggunakan HTTPS.');
+            }
+
+            const formData = new FormData();
+            formData.append('api_token', apiToken);
+            formData.append('url', targetUrl);
+            formData.append('return', 'apple_music,spotify,media');
+
+            const controller = new AbortController();
+            const timer = setTimeout(() => controller.abort(), 15000);
+
+            try {
+                const res = await fetch('https://api.audd.io/', {
+                    method: 'POST',
+                    body: formData,
+                    signal: controller.signal
+                });
+
+                const data = await res.json().catch(() => ({}));
+
+                if (!res.ok) {
+                    if (res.status === 401) {
+                        throw new Error('API Token AudD tidak valid. Periksa di Pengaturan.');
+                    }
+                    if (res.status === 429) {
+                        throw new Error('Batas kuota AudD terlampaui.');
+                    }
+                    throw new Error(`AudD API Error HTTP ${res.status}`);
+                }
+
+                if (data.status === 'error') {
+                    const errorMsg = data.error?.error_message || 'Link tidak dapat diproses AudD.';
+                    throw new Error(`AudD API: ${errorMsg}`);
+                }
+
+                return data.result || null;
+            } catch (e) {
+                if (e.name === 'AbortError') {
+                    throw new Error('Koneksi ke AudD timeout (lebih dari 15 detik).');
+                }
+                throw e;
+            } finally {
+                clearTimeout(timer);
+            }
+        }
+
+        async function startRecognition() {
+            if (isProcessing) return;
+            isProcessing = true;
+
+            initAudioContext();
+
+            const scanBtn = document.getElementById('scanBtn');
+            const scanBtnText = document.getElementById('scanBtnText');
+            if (scanBtn) scanBtn.disabled = true;
+            if (scanBtnText) scanBtnText.textContent = 'Memproses...';
+
+            cleanupObjectUrls();
+            const resultContainer = document.getElementById('resultContainer');
+            if (resultContainer) resultContainer.classList.add('hidden');
+
+            let audioBuffer = null;
+
+            try {
+
+                if (currentTab === 'link') {
+                    const urlInput = document.getElementById('mediaUrl');
+                    const rawInput = urlInput ? urlInput.value : '';
+                    const cleanUrl = cleanUrlInput(rawInput);
+
+                    if (!cleanUrl) {
+                        alert('Masukkan link TikTok, YouTube, atau URL file media terlebih dahulu!');
+                        return;
+                    }
+
+                    const isSocialLink = isSocialPageUrl(cleanUrl);
+                    updateProgress(
+                        20,
+                        isSocialLink ? 'Memeriksa Link TikTok/YouTube...' : 'Memeriksa Link...',
+                        isSocialLink
+                            ? 'Mencoba mengenali audio dari halaman lewat AudD Enterprise...'
+                            : 'Meminta AudD mengenali media dari URL langsung...'
+                    );
+
+                    if (isSocialLink) {
+                        setSocialLinkStatus('Sedang diproses oleh AudD Enterprise...', 'checking');
+                        const socialButton = document.getElementById('socialLinkBtn');
+                        if (socialButton) socialButton.textContent = 'Proses...';
+
+                        recognitionResult = await recognizeSocialPageUrl(cleanUrl);
+                        usedSegmentName = 'Dari Link TikTok/YouTube';
+                        setSocialLinkStatus(
+                            recognitionResult ? 'Berhasil menemukan lagu dari link' : 'Link diproses, tetapi lagu tidak ditemukan',
+                            recognitionResult ? 'success' : 'error'
+                        );
+                        if (socialButton) socialButton.textContent = 'Cek Link';
+                    } else {
+                        recognitionResult = await recognizeDirectMediaUrl(cleanUrl);
+                        usedSegmentName = 'Dari URL Media';
+                    }
+                    audioBuffer = null;
+
+                } else {
+                    if (!selectedFile) {
+                        alert('Pilih file media terlebih dahulu!');
+                        return;
+                    }
+                    updateProgress(25, 'Membaca File...', 'Mengekstrak audio dari file lokal...');
+                    const arrayBuffer = await selectedFile.arrayBuffer();
+                    const ctx = initAudioContext();
+                    audioBuffer = await ctx.decodeAudioData(arrayBuffer);
+                }
+
+                if (currentTab === 'link') {
+                    hideProgress();
+
+                    if (recognitionResult) {
+                        displayResult(recognitionResult, usedSegmentName);
+                    } else {
+                        if (isSocialPageUrl(cleanUrl)) {
+                            setSocialLinkStatus('Tidak ada kecocokan lagu dari link tersebut', 'error');
+                        }
+                        alert(
+                            'Lagu belum terdeteksi dari link tersebut.\n\n' +
+                            'Jika link-nya TikTok/YouTube, pastikan token AudD kamu memiliki akses Enterprise. ' +
+                            'Jika tidak, gunakan Upload File Video untuk pengenalan langsung tanpa backend.'
+                        );
+                    }
+                    return;
+                }
+
+                if (!audioBuffer) throw new Error('Format audio tidak dapat dibaca.');
+
+                const scanSegment = document.getElementById('scanSegment');
+                const noiseFilterToggle = document.getElementById('noiseFilterToggle');
+
+                const selectedSegment = scanSegment ? scanSegment.value : 'auto';
+                const applyFilter = noiseFilterToggle ? noiseFilterToggle.checked : true;
+
+                let recognitionResult = null;
+                let usedSegmentName = '';
+                const totalDuration = audioBuffer.duration;
+
+                if (selectedSegment === 'auto') {
+                    let segmentsToTry = [];
+                    if (totalDuration <= 10) {
+                        segmentsToTry = [{ offset: 0, name: `Awal (0 - ${Math.max(1, Math.floor(totalDuration))} Detik)` }];
+                    } else if (totalDuration <= 20) {
+                        segmentsToTry = [
+                            { offset: 0, name: 'Awal (0 - 10 Detik)' },
+                            { offset: Math.max(0, totalDuration - 10), name: `Akhir (${Math.floor(totalDuration - 10)} - ${Math.floor(totalDuration)} Detik)` }
+                        ];
+                    } else {
+                        segmentsToTry = [
+                            { offset: 0, name: 'Awal (0 - 10 Detik)' },
+                            { offset: Math.floor(totalDuration / 2 - 5), name: 'Tengah Video' },
+                            { offset: Math.max(0, totalDuration - 10), name: 'Akhir Video' }
+                        ];
+                    }
+
+                    for (let i = 0; i < segmentsToTry.length; i++) {
+                        const seg = segmentsToTry[i];
+                        updateProgress(40 + (i * 20), `Pemindaian Bagian (${i + 1}/${segmentsToTry.length})...`, `Mencocokkan nada ${seg.name}...`);
+                        
+                        const wavBlob = await extractAudioSlice(audioBuffer, seg.offset, 10, applyFilter);
+                        const result = await queryAudDApi(wavBlob);
+
+                        if (result && result.status === 'success' && result.result) {
+                            recognitionResult = result.result;
+                            usedSegmentName = seg.name;
+                            break;
+                        }
+                    }
+                } else {
+                    let offsetSec = parseFloat(selectedSegment);
+                    if (offsetSec >= totalDuration) {
+                        offsetSec = Math.max(0, totalDuration - 10);
+                    }
+                    usedSegmentName = `Detik ${Math.floor(offsetSec)} - ${Math.floor(Math.min(offsetSec + 10, totalDuration))}`;
+                    
+                    updateProgress(50, 'Mengekstrak Klip Audio...', 'Menyiapkan sampel audio...');
+                    const wavBlob = await extractAudioSlice(audioBuffer, offsetSec, 10, applyFilter);
+                    
+                    updateProgress(75, 'Memeriksa Database AudD...', 'Mencari kecocokan lagu...');
+                    const result = await queryAudDApi(wavBlob);
+                    if (result && result.status === 'success' && result.result) {
+                        recognitionResult = result.result;
+                    }
+                }
+
+                hideProgress();
+
+                if (recognitionResult) {
+                    displayResult(recognitionResult, usedSegmentName);
+                } else {
+                    alert('Lagu tidak terdeteksi pada klip ini. Coba ubah Bagian Waktu Pemindaian atau unggah file video secara langsung.');
+                }
+
+            } catch (err) {
+                hideProgress();
+                console.error('Recognition Error:', err);
+                alert(`Gagal Memproses:\n${err.message}`);
+            } finally {
+                isProcessing = false;
+                if (scanBtn) scanBtn.disabled = false;
+                if (scanBtnText) scanBtnText.textContent = 'Cari Judul & Deteksi Lagu';
+            }
+        }
+
+        async function extractAudioSlice(audioBuffer, startOffsetSec, durationSec, applyFilter) {
+            const sampleRate = audioBuffer.sampleRate;
+            const channels = audioBuffer.numberOfChannels;
+            const totalDuration = audioBuffer.duration;
+            
+            let safeStart = Math.min(Math.max(0, startOffsetSec), Math.max(0, totalDuration - 0.1));
+            let startSample = Math.floor(safeStart * sampleRate);
+            
+            let availableDuration = Math.max(0.1, totalDuration - safeStart);
+            let targetDuration = Math.min(durationSec, availableDuration);
+            let sliceLength = Math.floor(targetDuration * sampleRate);
+
+            if (sliceLength <= 0) {
+                startSample = 0;
+                sliceLength = audioBuffer.length;
+            }
+
+            const OfflineContextClass = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+            const offlineCtx = new OfflineContextClass(channels, sliceLength, sampleRate);
+            const source = offlineCtx.createBufferSource();
+            
+            const sliceBuffer = offlineCtx.createBuffer(channels, sliceLength, sampleRate);
+            for (let i = 0; i < channels; i++) {
+                const channelData = audioBuffer.getChannelData(i);
+                sliceBuffer.copyToChannel(channelData.subarray(startSample, startSample + sliceLength), i);
+            }
+
+            source.buffer = sliceBuffer;
+
+            if (applyFilter) {
+                try {
+                    const highpass = offlineCtx.createBiquadFilter();
+                    highpass.type = "highpass";
+                    highpass.frequency.value = 80;
+
+                    const lowpass = offlineCtx.createBiquadFilter();
+                    lowpass.type = "lowpass";
+                    lowpass.frequency.value = 8000;
+
+                    source.connect(highpass);
+                    highpass.connect(lowpass);
+                    lowpass.connect(offlineCtx.destination);
+                } catch (e) {
+                    source.connect(offlineCtx.destination);
+                }
+            } else {
+                source.connect(offlineCtx.destination);
+            }
+
+            source.start(0);
+            const renderedBuffer = await offlineCtx.startRendering();
+            return bufferToWave(renderedBuffer, renderedBuffer.length);
+        }
+
+        function bufferToWave(abuffer, len) {
+            let numOfChan = abuffer.numberOfChannels,
+                length = len * numOfChan * 2 + 44,
+                out = new DataView(new ArrayBuffer(length)),
+                channels = [], sampleRate = abuffer.sampleRate,
+                offset = 0, pos = 0;
+
+            function setUint16(data) { out.setUint16(pos, data, true); pos += 2; }
+            function setUint32(data) { out.setUint32(pos, data, true); pos += 4; }
+
+            setUint32(0x46464952); setUint32(length - 8); setUint32(0x45564157);
+            setUint32(0x20746d66); setUint32(16); setUint16(1); setUint16(numOfChan);
+            setUint32(sampleRate); setUint32(sampleRate * 2 * numOfChan);
+            setUint16(numOfChan * 2); setUint16(16); setUint32(0x61746164);
+            setUint32(length - pos - 4);
+
+            for (let i = 0; i < abuffer.numberOfChannels; i++) channels.push(abuffer.getChannelData(i));
+
+            while (offset < len) {
+                for (let i = 0; i < numOfChan; i++) {
+                    let sample = Math.max(-1, Math.min(1, channels[i][offset]));
+                    sample = (0.5 + sample < 0 ? sample * 32768 : sample * 32767) | 0;
+                    out.setInt16(pos, sample, true);
+                    pos += 2;
+                }
+                offset++;
+            }
+
+            return new Blob([out], { type: "audio/wav" });
+        }
+
+        async function queryAudDApi(wavBlob) {
+            try {
+                const apiToken = getUserApiToken();
+                const formData = new FormData();
+                formData.append('file', wavBlob, 'sample.wav');
+                formData.append('api_token', apiToken);
+                formData.append('return', 'apple_music,spotify,media');
+
+                const controller = new AbortController();
+                const timer = setTimeout(() => controller.abort(), 12000);
+
+                const res = await fetch('https://api.audd.io/', { method: 'POST', body: formData, signal: controller.signal });
+                clearTimeout(timer);
+                
+                if (!res.ok) {
+                    if (res.status === 401) throw new Error('API Token AudD tidak valid. Periksa di Pengaturan.');
+                    if (res.status === 429) throw new Error('Batas kuota harian AudD terlampaui.');
+                    throw new Error(`AudD API Error HTTP ${res.status}`);
+                }
+
+                const data = await res.json();
+                if (data.status === 'error') {
+                    const errorMsg = data.error ? data.error.error_message : 'Gagal memproses lagu pada AudD.';
+                    throw new Error(`AudD API: ${errorMsg}`);
+                }
+
+                return data;
+            } catch (e) {
+                if (e.name === 'AbortError') {
+                    throw new Error('Koneksi ke AudD API timeout (melebihi 12 detik).');
+                }
+                throw e;
+            }
+        }
+
+        function displayResult(song, segmentName) {
+            const titleEl = document.getElementById('songTitle');
+            const artistEl = document.getElementById('songArtist');
+            const albumEl = document.getElementById('songAlbum');
+            const badgeEl = document.getElementById('detectedTimeBadge');
+            const albumArtEl = document.getElementById('albumArt');
+
+            if (titleEl) titleEl.textContent = song.title || 'Judul Tidak Diketahui';
+            if (artistEl) artistEl.textContent = song.artist || 'Penyanyi Tidak Diketahui';
+            if (albumEl) albumEl.innerHTML = `<i class="fa-solid fa-compact-disc mr-1"></i> Album: ${escapeHtml(song.album || '-')}`;
+            if (badgeEl) badgeEl.textContent = `Terdeteksi di: ${segmentName}`;
+
+            const artwork = (song.spotify && song.spotify.album && song.spotify.album.images && song.spotify.album.images[0]) 
+                ? song.spotify.album.images[0].url 
+                : 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=400&auto=format&fit=crop&q=80';
+
+            if (albumArtEl) albumArtEl.src = artwork;
+
+            const queryStr = encodeURIComponent(`${song.title || ''} ${song.artist || ''}`);
+            
+            const spotifyBtn = document.getElementById('spotifyBtn');
+            const youtubeBtn = document.getElementById('youtubeBtn');
+            const appleBtn = document.getElementById('appleBtn');
+
+            if (spotifyBtn) spotifyBtn.href = (song.spotify && song.spotify.external_urls && song.spotify.external_urls.spotify) ? song.spotify.external_urls.spotify : `https://open.spotify.com/search/${queryStr}`;
+            if (youtubeBtn) youtubeBtn.href = `https://www.youtube.com/results?search_query=${queryStr}`;
+            if (appleBtn) appleBtn.href = (song.apple_music && song.apple_music.url) ? song.apple_music.url : `https://music.apple.com/us/search?term=${queryStr}`;
+
+            const resultContainer = document.getElementById('resultContainer');
+            if (resultContainer) {
+                resultContainer.classList.remove('hidden');
+                resultContainer.scrollIntoView({ behavior: 'smooth' });
+            }
+
+            loadInAppPlayers(song.title || '', song.artist || '', song);
+        }
+
+        function loadInAppPlayers(title, artist, songObj) {
+            const statusText = document.getElementById('playerStatusText');
+            const audioWrapper = document.getElementById('audioSampleWrapper');
+            const audioPlayer = document.getElementById('audioSample');
+            const ytWrapper = document.getElementById('ytPlayerWrapper');
+            const ytEmbed = document.getElementById('ytEmbedPlayer');
+
+            if (audioWrapper) audioWrapper.classList.add('hidden');
+            if (ytWrapper) ytWrapper.classList.add('hidden');
+            if (statusText) statusText.textContent = "Pemutar Siap!";
+
+            const spotifyPreview = songObj.spotify && songObj.spotify.preview_url;
+            if (spotifyPreview && audioPlayer && audioWrapper) {
+                audioPlayer.src = spotifyPreview;
+                audioWrapper.classList.remove('hidden');
+            }
+
+            let ytVideoId = null;
+            if (songObj.media) {
+                try {
+                    const mediaObj = typeof songObj.media === 'string' ? JSON.parse(songObj.media) : songObj.media;
+                    if (Array.isArray(mediaObj)) {
+                        const ytMedia = mediaObj.find(m => m.provider === 'youtube');
+                        if (ytMedia && ytMedia.id) ytVideoId = ytMedia.id;
+                    }
+                } catch (e) {}
+            }
+
+            if (ytVideoId && ytEmbed && ytWrapper) {
+                ytEmbed.src = `https://www.youtube-nocookie.com/embed/${ytVideoId}?autoplay=0`;
+                ytWrapper.classList.remove('hidden');
+            }
+        }
+    </script>
+</body>
+</html>
