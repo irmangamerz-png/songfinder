@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SongFinder Pro - Kenali Musik Sekitamu</title>
+    <style>
+        :root {
+            --primary: #6366f1;
+            --primary-hover: #4f46e5;
+            --bg-color: #0f172a;
+            --card-bg: #1e293b;
+            --text-color: #f8fafc;
+            --text-secondary: #94a3b8;
+            --accent: #ec4899;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 480px;
+            background: var(--card-bg);
+            border-radius: 24px;
+            padding: 30px;
+            box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.5), 0 8px 10px -6px rgb(0 0 0 / 0.5);
+            text-align: center;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        h1 {
+            font-size: 1.8rem;
+            margin-bottom: 8px;
+            background: linear-gradient(to right, #818cf8, #ec4899);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        p.subtitle {
+            color: var(--text-secondary);
+            font-size: 0.95rem;
+            margin-bottom: 30px;
+        }
+
+        .visualizer {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 4px;
+            height: 50px;
+            margin-bottom: 30px;
+        }
+
+        .bar {
+            width: 4px;
+            height: 10px;
+            background-color: var(--text-secondary);
+            border-radius: 4px;
+            transition: height 0.2s ease;
+        }
+
+        .listening .bar {
+            animation: bounce 0.8s infinite ease-in-out alternate;
+            background-color: var(--accent);
+        }
+
+        .listening .bar:nth-child(2) { animation-delay: 0.2s; }
+        .listening .bar:nth-child(3) { animation-delay: 0.4s; }
+        .listening .bar:nth-child(4) { animation-delay: 0.1s; }
+        .listening .bar:nth-child(5) { animation-delay: 0.3s; }
+
+        @keyframes bounce {
+            0% { height: 10px; }
+            100% { height: 45px; }
+        }
+
+        .btn-listen {
+            background: linear-gradient(135deg, var(--primary), var(--accent));
+            color: white;
+            border: none;
+            padding: 16px 32px;
+            font-size: 1.1rem;
+            font-weight: 600;
+            border-radius: 50px;
+            cursor: pointer;
+            box-shadow: 0 10px 15px -3px rgba(99, 102, 241, 0.4);
+            transition: all 0.3s ease;
+            width: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+
+        .btn-listen:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 14px 20px -3px rgba(99, 102, 241, 0.6);
+        }
+
+        .btn-listen:active {
+            transform: translateY(0);
+        }
+
+        .btn-listen:disabled {
+            background: #475569;
+            cursor: not-allowed;
+            box-shadow: none;
+            transform: none;
+        }
+
+        .status-text {
+            margin-top: 20px;
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+            min-height: 24px;
+        }
+
+        .result-container {
+            margin-top: 25px;
+            text-align: left;
+            background: rgba(15, 23, 42, 0.6);
+            border-radius: 16px;
+            padding: 16px;
+            display: none;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .result-container.active {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            animation: fadeIn 0.5s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .album-art {
+            width: 70px;
+            height: 70px;
+            border-radius: 12px;
+            object-fit: cover;
+            background: #334155;
+        }
+
+        .song-info {
+            flex: 1;
+            overflow: hidden;
+        }
+
+        .song-title {
+            font-size: 1rem;
+            font-weight: 700;
+            color: var(--text-color);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            margin-bottom: 4px;
+        }
+
+        .song-artist {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            margin-bottom: 8px;
+        }
+
+        .platforms {
+            display: flex;
+            gap: 8px;
+        }
+
+        .platform-link {
+            font-size: 0.75rem;
+            text-decoration: none;
+            padding: 4px 10px;
+            border-radius: 6px;
+            background: #334155;
+            color: #f1f5f9;
+            font-weight: 600;
+            transition: background 0.2s;
+        }
+
+        .platform-link:hover {
+            background: var(--primary);
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h1>SongFinder Pro</h1>
+        <p class="subtitle">Putar lagu di sekitar Anda, lalu ketuk tombol untuk mencari tahu judulnya.</p>
+
+        <div class="visualizer" id="visualizer">
+            <div class="bar"></div>
+            <div class="bar"></div>
+            <div class="bar"></div>
+            <div class="bar"></div>
+            <div class="bar"></div>
+        </div>
+
+        <button class="btn-listen" id="listenBtn" onclick="startListening()">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v1a7 7 0 0 1-14 0v-1"></path><line x1="12" y1="19" x2="12" y2="23"></line><line x1="8" y1="23" x2="16" y2="23"></line></svg>
+            Cari Lagu Ini
+        </button>
+
+        <div class="status-text" id="statusText">Tekan tombol untuk mulai mendengarkan</div>
+
+        <div class="result-container" id="resultContainer">
+            <img id="albumArt" class="album-art" src="" alt="Album Art">
+            <div class="song-info">
+                <div class="song-title" id="songTitle">-</div>
+                <div class="song-artist" id="songArtist">-</div>
+                <div class="platforms" id="platforms"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // URL Backend Railway Anda yang sudah terhubung
+        const BACKEND_API_URL = 'https://songfinder-production-d758.up.railway.app';
+
+        const listenBtn = document.getElementById('listenBtn');
+        const statusText = document.getElementById('statusText');
+        const visualizer = document.getElementById('visualizer');
+        const resultContainer = document.getElementById('resultContainer');
+        const albumArt = document.getElementById('albumArt');
+        const songTitle = document.getElementById('songTitle');
+        const songArtist = document.getElementById('songArtist');
+        const platforms = document.getElementById('platforms');
+
+        async function startListening() {
+            resultContainer.classList.remove('active');
+            listenBtn.disabled = true;
+            visualizer.classList.add('listening');
+            statusText.textContent = 'Meminta izin mikrofon...';
+
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                statusText.textContent = 'Mendengarkan musik sekitar (6 detik)...';
+
+                const mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+                const audioChunks = [];
+
+                mediaRecorder.ondataavailable = event => {
+                    audioChunks.push(event.data);
+                };
+
+                mediaRecorder.onstop = async () => {
+                    const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+                    
+                    // Matikan semua track mikrofon
+                    stream.getTracks().forEach(track => track.stop());
+                    
+                    await sendAudioToBackend(audioBlob);
+                };
+
+                mediaRecorder.start();
+
+                // Rekam selama 6 detik
+                setTimeout(() => {
+                    mediaRecorder.stop();
+                }, 6000);
+
+            } catch (error) {
+                console.error(error);
+                statusText.textContent = 'Gagal mengakses mikrofon atau izin ditolak.';
+                resetState();
+            }
+        }
+
+        async function sendAudioToBackend(blob) {
+            statusText.textContent = 'Mencari lagu di server...';
+            const formData = new FormData();
+            formData.append('file', blob, 'recording.webm');
+
+            try {
+                const response = await fetch(`${BACKEND_API_URL}/recognize`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+
+                if (data.success && data.result) {
+                    displayResult(data.result);
+                } else {
+                    statusText.textContent = 'Lagu tidak ditemukan. Coba lagi yang lebih dekat!';
+                    resetState();
+                }
+            } catch (err) {
+                console.error(err);
+                statusText.textContent = 'Terjadi kesalahan koneksi ke server.';
+                resetState();
+            }
+        }
+
+        function displayResult(song) {
+            statusText.textContent = 'Lagu berhasil ditemukan!';
+            songTitle.textContent = song.title || 'Judul Tidak Dikenal';
+            songArtist.textContent = song.artist || 'Artis Tidak Dikenal';
+            
+            // Gambar album
+            if (song.spotify && song.spotify.album && song.spotify.album.images) {
+                albumArt.src = song.spotify.album.images[0].url;
+            } else if (song.apple_music && song.apple_music.artwork) {
+                albumArt.src = song.apple_music.artwork.url.replace('{w}', '150').replace('{h}', '150');
+            } else {
+                albumArt.src = 'https://via.placeholder.com/70';
+            }
+
+            // Link platform musik
+            platforms.innerHTML = '';
+            if (song.song_link) {
+                platforms.innerHTML += `<a href="${song.song_link}" target="_blank" class="platform-link">SongLink</a>`;
+            }
+            if (song.spotify && song.spotify.external_urls) {
+                platforms.innerHTML += `<a href="${song.spotify.external_urls.spotify}" target="_blank" class="platform-link">Spotify</a>`;
+            }
+
+            resultContainer.classList.add('active');
+            resetState();
+        }
+
+        function resetState() {
+            listenBtn.disabled = false;
+            visualizer.classList.remove('listening');
+        }
+    </script>
+</body>
+</html>
