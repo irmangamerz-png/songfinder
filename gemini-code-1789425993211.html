@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SongFinder Pro</title>
+    <style>
+        :root {
+            --primary: #6366f1;
+            --bg-color: #0f172a;
+            --card-bg: #1e293b;
+            --text-color: #f8fafc;
+            --text-secondary: #94a3b8;
+            --accent: #ec4899;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 480px;
+            background: var(--card-bg);
+            border-radius: 24px;
+            padding: 30px;
+            box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.5);
+            text-align: center;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        h1 {
+            font-size: 1.8rem;
+            margin-bottom: 8px;
+            background: linear-gradient(to right, #818cf8, #ec4899);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        p.subtitle {
+            color: var(--text-secondary);
+            font-size: 0.95rem;
+            margin-bottom: 30px;
+        }
+
+        .btn-listen {
+            background: linear-gradient(135deg, var(--primary), var(--accent));
+            color: white;
+            border: none;
+            padding: 16px 32px;
+            font-size: 1.1rem;
+            font-weight: 600;
+            border-radius: 50px;
+            cursor: pointer;
+            box-shadow: 0 10px 15px -3px rgba(99, 102, 241, 0.4);
+            transition: all 0.3s ease;
+            width: 100%;
+        }
+
+        .btn-listen:disabled {
+            background: #475569;
+            cursor: not-allowed;
+        }
+
+        .status-text {
+            margin-top: 20px;
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+        }
+
+        .result-container {
+            margin-top: 25px;
+            text-align: left;
+            background: rgba(15, 23, 42, 0.6);
+            border-radius: 16px;
+            padding: 16px;
+            display: none;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .result-container.active {
+            display: flex;
+        }
+
+        .album-art {
+            width: 70px;
+            height: 70px;
+            border-radius: 12px;
+            object-fit: cover;
+        }
+
+        .song-title {
+            font-size: 1rem;
+            font-weight: 700;
+            color: var(--text-color);
+            margin-bottom: 4px;
+        }
+
+        .song-artist {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h1>SongFinder Pro</h1>
+        <p class="subtitle">Tekan tombol di bawah untuk mengenali musik di sekitar Anda.</p>
+
+        <button class="btn-listen" id="listenBtn" onclick="startListening()">Cari Lagu Ini</button>
+
+        <div class="status-text" id="statusText">Siap mendengarkan</div>
+
+        <div class="result-container" id="resultContainer">
+            <img id="albumArt" class="album-art" src="" alt="Album Art">
+            <div>
+                <div class="song-title" id="songTitle">-</div>
+                <div class="song-artist" id="songArtist">-</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // URL Backend Railway Anda
+        const BACKEND_API_URL = 'https://songfinder-production-d758.up.railway.app';
+
+        const listenBtn = document.getElementById('listenBtn');
+        const statusText = document.getElementById('statusText');
+        const resultContainer = document.getElementById('resultContainer');
+        const albumArt = document.getElementById('albumArt');
+        const songTitle = document.getElementById('songTitle');
+        const songArtist = document.getElementById('songArtist');
+
+        async function startListening() {
+            resultContainer.classList.remove('active');
+            listenBtn.disabled = true;
+            statusText.textContent = 'Meminta izin mikrofon...';
+
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                statusText.textContent = 'Mendengarkan musik (6 detik)...';
+
+                const mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+                const audioChunks = [];
+
+                mediaRecorder.ondataavailable = event => audioChunks.push(event.data);
+
+                mediaRecorder.onstop = async () => {
+                    const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+                    stream.getTracks().forEach(track => track.stop());
+                    await sendAudioToBackend(audioBlob);
+                };
+
+                mediaRecorder.start();
+                setTimeout(() => mediaRecorder.stop(), 6000);
+
+            } catch (error) {
+                console.error(error);
+                statusText.textContent = 'Gagal mengakses mikrofon.';
+                resetState();
+            }
+        }
+
+        async function sendAudioToBackend(blob) {
+            statusText.textContent = 'Mencari lagu di server...';
+            const formData = new FormData();
+            formData.append('file', blob, 'recording.webm');
+
+            try {
+                const response = await fetch(`${BACKEND_API_URL}/recognize`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+
+                if (data.success && data.result) {
+                    statusText.textContent = 'Lagu ditemukan!';
+                    songTitle.textContent = data.result.title || 'Tidak diketahui';
+                    songArtist.textContent = data.result.artist || 'Tidak diketahui';
+                    
+                    if (data.result.spotify && data.result.spotify.album && data.result.spotify.album.images) {
+                        albumArt.src = data.result.spotify.album.images[0].url;
+                    } else {
+                        albumArt.src = 'https://via.placeholder.com/70';
+                    }
+
+                    resultContainer.classList.add('active');
+                } else {
+                    statusText.textContent = 'Lagu tidak ditemukan. Coba lagi!';
+                }
+            } catch (err) {
+                console.error(err);
+                statusText.textContent = 'Kesalahan koneksi ke server.';
+            } finally {
+                resetState();
+            }
+        }
+
+        function resetState() {
+            listenBtn.disabled = false;
+        }
+    </script>
+</body>
+</html>
