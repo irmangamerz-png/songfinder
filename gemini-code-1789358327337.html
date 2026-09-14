@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="id" id="htmlRoot">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SongFinder Pro - RGB Dynamic Version</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        /* ===== Animasi Latar Belakang RGB PC Gaming ===== */
+        @keyframes rgbGlow {
+            0% { filter: hue-rotate(0deg); }
+            50% { filter: hue-rotate(180deg); }
+            100% { filter: hue-rotate(360deg); }
+        }
+
+        .rgb-bg-effect {
+            position: fixed;
+            inset: -50px;
+            z-index: -1;
+            background: linear-gradient(45deg, #ff0055, #7000ff, #00ffff, #00ff66, #ff0055);
+            background-size: 400% 400%;
+            animation: rgbGlow 12s ease infinite;
+            pointer-events: none;
+            transition: opacity 0.5s ease;
+        }
+
+        /* Mode Terang vs Gelap Dinamis */
+        .theme-dark {
+            background-color: #030712;
+            color: #f8fafc;
+        }
+        .theme-dark .app-card {
+            background-color: #0f172a;
+            border-color: #1e293b;
+        }
+        .theme-dark .app-input {
+            background-color: #020617;
+            border-color: #1e293b;
+            color: #f8fafc;
+        }
+
+        .theme-light {
+            background-color: #f8fafc;
+            color: #0f172a;
+        }
+        .theme-light .app-card {
+            background-color: #ffffff;
+            border-color: #e2e8f0;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.05), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+        }
+        .theme-light .app-input {
+            background-color: #f1f5f9;
+            border-color: #cbd5e1;
+            color: #0f172a;
+        }
+
+        /* ===== Panel Admin Styles ===== */
+        #sfAdminPanel {
+          display: none;
+          position: fixed;
+          inset: 0;
+          z-index: 99999;
+          background: rgba(0,0,0,0.75);
+          padding: 18px;
+          box-sizing: border-box;
+          overflow: auto;
+          align-items: center;
+          justify-content: center;
+        }
+        #sfAdminPanel.sf-open { display: flex; }
+        .sf-admin-card {
+          width: min(480px, 100%);
+          max-height: 90vh;
+          overflow: auto;
+          border-radius: 16px;
+          padding: 20px;
+          background: #1e1b4b;
+          border: 1px solid rgba(168, 85, 247, 0.3);
+          color: #f8fafc;
+          box-shadow: 0 20px 60px rgba(0,0,0,0.6);
+        }
+        .sf-admin-stat {
+          padding: 12px;
+          margin: 10px 0;
+          border-radius: 12px;
+          background: rgba(255, 255, 255, 0.05);
+          font-size: 13px;
+        }
+    </style>
+</head>
+<body id="bodyRoot" class="theme-dark min-h-screen flex flex-col items-center justify-center p-4 relative transition-colors duration-500">
+
+    <!-- Efek Latar Belakang RGB PC Gaming -->
+    <div class="rgb-bg-effect" id="rgbBg"></div>
+
+    <!-- Tombol Admin Khusus di Pojok Kanan Atas -->
+    <button onclick="openAdminPanel()" class="absolute top-4 right-4 app-card border hover:border-purple-500 text-slate-400 hover:text-purple-400 p-2.5 rounded-xl text-xs font-semibold transition flex items-center gap-1.5 shadow-md z-10" title="Login Admin">
+        <i class="fa-solid fa-lock text-purple-400"></i> Admin
+    </button>
+
+    <!-- Tombol Ganti Tema Manual (Bisa diklik untuk maksa Mode Gelap RGB Menyala / Terang) -->
+    <button onclick="toggleThemeManual()" id="themeToggleBtn" class="absolute top-4 left-4 app-card border hover:border-purple-500 p-2.5 rounded-xl text-xs font-semibold transition flex items-center gap-1.5 shadow-md z-10" title="Ubah Tema Manual">
+        <i id="themeIcon" class="fa-solid fa-moon text-purple-400"></i> <span id="sensorText">Mode Gelap RGB</span>
+    </button>
+
+    <div class="w-full max-w-md app-card border rounded-2xl shadow-xl p-6 mt-12">
+        <!-- Judul -->
+        <h1 class="text-xl font-bold text-center mb-6 text-purple-400">SongFinder Pro</h1>
+
+        <!-- Tab Navigasi -->
+        <div class="flex bg-slate-900/40 p-1 rounded-xl mb-6 border border-slate-700/30">
+            <button id="tabLink" onclick="switchTab('link')" class="flex-1 py-2 text-sm font-medium rounded-lg bg-purple-600 text-white transition">Link Media</button>
+            <button id="tabFile" onclick="switchTab('file')" class="flex-1 py-2 text-sm font-medium rounded-lg text-slate-400 transition">Upload File</button>
+        </div>
+
+        <!-- Form Link -->
+        <div id="sectionLink" class="space-y-4">
+            <div>
+                <label class="block text-xs font-semibold opacity-80 mb-2">URL Video TikTok / YouTube / Text TikTok Lite</label>
+                <div class="relative">
+                    <input type="text" id="urlInput" placeholder="Tempel link atau teks di sini..." class="w-full app-input border rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-purple-500 pr-10">
+                    <button onclick="clearInput()" class="absolute right-3 top-3.5 opacity-50 hover:opacity-100">✕</button>
+                </div>
+                <p class="text-[10px] opacity-60 mt-1.5">Teks promo TikTok Lite akan otomatis dibersihkan.</p>
+            </div>
+            <!-- Info Limit & Cooldown -->
+            <p id="limitNoticeText" class="text-[11px] text-amber-400/90 font-medium bg-amber-500/10 p-2.5 rounded-xl border border-amber-500/20">
+                ⚠️ Sisa kuota penggunaan reguler: 20/20 link. Jeda tunggu 20 jam aktif jika habis.
+            </p>
+        </div>
+
+        <!-- Form File -->
+        <div id="sectionFile" class="space-y-4 hidden">
+            <div>
+                <label class="block text-xs font-semibold opacity-80 mb-2">Pilih File Video/Audio dari HP</label>
+                <input type="file" id="fileInput" accept="video/*,audio/*" class="w-full app-input border rounded-xl p-2 text-sm opacity-80 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-purple-600 file:text-white hover:file:bg-purple-700">
+            </div>
+        </div>
+
+        <!-- Tombol Aksi -->
+        <button onclick="processSearch()" id="submitBtn" class="w-full mt-6 bg-purple-600 hover:bg-purple-700 text-white font-semibold py-3 rounded-xl transition shadow-lg shadow-purple-900/40">
+            Cari Lagu
+        </button>
+
+        <!-- Hasil & Pemutar Musik -->
+        <div id="resultContainer" class="mt-6 hidden p-4 app-input border rounded-xl text-sm space-y-4">
+            <div class="flex items-center gap-3">
+                <img id="albumArt" src="" alt="Album Art" class="w-16 h-16 rounded-xl object-cover border border-slate-700/40">
+                <div class="overflow-hidden">
+                    <p id="songTitle" class="font-bold text-purple-400 truncate">Judul</p>
+                    <p id="songArtist" class="text-xs opacity-75 truncate">Artis</p>
+                    <p id="songAlbum" class="text-[10px] opacity-50 truncate">-</p>
+                </div>
+            </div>
+
+            <!-- Pemutar Audio Cuplikan 1 Menit 30 Detik -->
+            <div id="audioWrapper" class="hidden space-y-1">
+                <p class="text-[10px] font-semibold opacity-75"><i class="fa-solid fa-music mr-1"></i> Cuplikan Audio (1 Menit 30 Detik):</p>
+                <audio id="audioPlayer" controls class="w-full h-8" ontimeupdate="checkAudioDuration(this)"></audio>
+            </div>
+
+            <!-- Tombol Link Spotify & YouTube -->
+            <div class="grid grid-cols-2 gap-2 pt-2">
+                <a id="spotifyLink" href="#" target="_blank" class="hidden py-2 px-3 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 rounded-xl text-xs font-semibold flex items-center justify-center gap-2 transition">
+                    <i class="fa-brands fa-spotify text-sm"></i> Spotify
+                </a>
+                <a id="youtubeLink" href="#" target="_blank" class="hidden py-2 px-3 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 rounded-xl text-xs font-semibold flex items-center justify-center gap-2 transition">
+                    <i class="fa-brands fa-youtube text-sm"></i> YouTube
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Hidden Admin Panel -->
+    <div id="sfAdminPanel">
+      <div class="sf-admin-card">
+        <h2 style="margin-top:0" class="text-purple-400 font-bold text-base mb-1">🔐 Panel Admin Eksklusif</h2>
+        <p class="text-xs text-slate-400 mb-4">Kontrol sistem pembatasan kuota dan jeda tunggu.</p>
+
+        <div class="sf-admin-stat space-y-1">
+          <div><b>Status Akses:</b> <span id="sfAdminStatusText" class="text-emerald-400">Admin Aktif (Bebas tanpa jeda)</span></div>
+          <div><b>Penggunaan Tersimpan:</b> <span id="sfAdminCount">0 / 1000</span></div>
+        </div>
+
+        <div class="flex flex-col gap-2 mt-4">
+          <button type="button" id="sfAdminResetBtn" class="w-full py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-medium transition">🔄 Reset Kuota & Cooldown</button>
+          <button type="button" id="sfAdminLogoutBtn" class="w-full py-2.5 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 text-rose-400 rounded-xl text-xs font-medium transition">🚪 Logout Admin (Cek PIN Lagi)</button>
+          <button type="button" id="sfAdminCloseBtn" class="w-full py-2.5 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-xs font-medium transition">✕ Tutup</button>
+        </div>
+      </div>
+    </div>
+
+    <script>
+        const AUDD_TOKEN = '9fd164b2d84f0af4d07f3ef9bb62359e';
+        let currentMode = 'link';
+
+        const MAX_USER_LIMIT = 20;
+        const COOLDOWN_HOURS = 20;
+        const SF_ADMIN_MODE = 'SF_ADMIN_MODE';
+        const SF_ADMIN_PIN = '01092007';
+        const MAX_AUDIO_PLAY_DURATION = 90;
+
+        /* ===== Sistem Pengendali Tema RGB & Terang/Gelap ===== */
+        function applyTheme(isDark) {
+            const bodyRoot = document.getElementById('bodyRoot');
+            const sensorText = document.getElementById('sensorText');
+            const themeIcon = document.getElementById('themeIcon');
+            const rgbBg = document.getElementById('rgbBg');
+
+            if (isDark) {
+                bodyRoot.className = "theme-dark min-h-screen flex flex-col items-center justify-center p-4 relative transition-colors duration-500";
+                rgbBg.style.opacity = '0.25'; // RGB Gaming menyala terang di mode gelap
+                sensorText.textContent = "Mode Gelap RGB";
+                themeIcon.className = "fa-solid fa-moon text-purple-400";
+                localStorage.setItem('SF_USER_THEME', 'dark');
+            } else {
+                bodyRoot.className = "theme-light min-h-screen flex flex-col items-center justify-center p-4 relative transition-colors duration-500";
+                rgbBg.style.opacity = '0.07'; // RGB agak redup di mode terang agar bersih
+                sensorText.textContent = "Mode Terang";
+                themeIcon.className = "fa-solid fa-sun text-amber-400";
+                localStorage.setItem('SF_USER_THEME', 'light');
+            }
+        }
+
+        function toggleThemeManual() {
+            const bodyRoot = document.getElementById('bodyRoot');
+            const isCurrentlyDark = bodyRoot.classList.contains('theme-dark');
+            applyTheme(!isCurrentlyDark);
+        }
+
+        function initLightingSensor() {
+            // Cek apakah user sudah pernah memilih manual sebelumnya di perangkat ini
+            const savedTheme = localStorage.getItem('SF_USER_THEME');
+            if (savedTheme) {
+                applyTheme(savedTheme === 'dark');
+                return;
+            }
+
+            // Jika belum pernah set manual, ikuti waktu otomatis (Malam = Gelap RGB, Siang = Terang)
+            const currentHour = new Date().getHours();
+            const isNightTime = currentHour >= 18 || currentHour < 6;
+            applyTheme(isNightTime);
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            initLightingSensor();
+            updateLimitNoticeUI();
+        });
+
+        function isAdminActive() {
+            try { return localStorage.getItem(SF_ADMIN_MODE) === '1'; } catch (e) { return false; }
+        }
+
+        function checkAudioDuration(player) {
+            if (player.currentTime >= MAX_AUDIO_PLAY_DURATION) {
+                player.pause();
+                player.currentTime = 0;
+            }
+        }
+
+        function checkAndUpdateQueueLimit() {
+            if (isAdminActive()) return { allowed: true };
+            try {
+                const now = Date.now();
+                let usageCount = parseInt(localStorage.getItem('SF_USAGE_COUNT') || '0', 10);
+                let cooldownEnd = parseInt(localStorage.getItem('SF_COOLDOWN_END') || '0', 10);
+
+                if (cooldownEnd && now < cooldownEnd) {
+                    const remainingHours = Math.ceil((cooldownEnd - now) / (1000 * 60 * 60));
+                    return { allowed: false, message: `Batas kuota habis. Harap tunggu sekitar ${remainingHours} jam lagi.` };
+                }
+                if (cooldownEnd && now >= cooldownEnd) {
+                    usageCount = 0;
+                    localStorage.setItem('SF_USAGE_COUNT', '0');
+                    localStorage.removeItem('SF_COOLDOWN_END');
+                }
+                if (usageCount >= MAX_USER_LIMIT) {
+                    const newCooldownEnd = now + (COOLDOWN_HOURS * 60 * 60 * 1000);
+                    localStorage.setItem('SF_COOLDOWN_END', newCooldownEnd.toString());
+                    return { allowed: false, message: `Batas ${MAX_USER_LIMIT} link tercapai. Jeda ${COOLDOWN_HOURS} jam aktif.` };
+                }
+                return { allowed: true, remaining: MAX_USER_LIMIT - usageCount };
+            } catch (e) { return { allowed: true }; }
+        }
+
+        function recordUsage() {
+            if (isAdminActive()) return;
+            try {
+                let usageCount = parseInt(localStorage.getItem('SF_USAGE_COUNT') || '0', 10) + 1;
+                localStorage.setItem('SF_USAGE_COUNT', usageCount.toString());
+                if (usageCount >= MAX_USER_LIMIT) {
+                    const cooldownEnd = Date.now() + (COOLDOWN_HOURS * 60 * 60 * 1000);
+                    localStorage.setItem('SF_COOLDOWN_END', cooldownEnd.toString());
+                }
+                updateLimitNoticeUI();
+            } catch (e) {}
+        }
+
+        function updateLimitNoticeUI() {
+            const noticeEl = document.getElementById('limitNoticeText');
+            if (!noticeEl) return;
+            if (isAdminActive()) {
+                noticeEl.innerHTML = `🛡️ <b>Admin Mode Aktif:</b> Kapasitas hingga 1000 link tanpa jeda tunggu.`;
+                noticeEl.className = `text-[11px] text-emerald-400 font-medium bg-emerald-500/10 p-2.5 rounded-xl border border-emerald-500/20`;
+                return;
+            }
+            const check = checkAndUpdateQueueLimit();
+            if (!check.allowed) {
+                noticeEl.innerHTML = `⚠️ ${check.message}`;
+                noticeEl.className = `text-[11px] text-rose-400 font-medium bg-rose-500/10 p-2.5 rounded-xl border border-rose-500/20`;
+            } else {
+                const remaining = check.remaining !== undefined ? check.remaining : MAX_USER_LIMIT;
+                noticeEl.innerHTML = `⚠️ Sisa kuota reguler: ${remaining}/${MAX_USER_LIMIT} link. Jeda ${COOLDOWN_HOURS} jam aktif jika habis.`;
+                noticeEl.className = `text-[11px] text-amber-400/90 font-medium bg-amber-500/10 p-2.5 rounded-xl border border-amber-500/20`;
+            }
+        }
+
+        function switchTab(mode) {
+            currentMode = mode;
+            const tabLink = document.getElementById('tabLink');
+            const tabFile = document.getElementById('tabFile');
+            const sectionLink = document.getElementById('sectionLink');
+            const sectionFile = document.getElementById('sectionFile');
+
+            if (mode === 'link') {
+                tabLink.className = "flex-1 py-2 text-sm font-medium rounded-lg bg-purple-600 text-white transition";
+                tabFile.className = "flex-1 py-2 text-sm font-medium rounded-lg opacity-60 transition";
+                sectionLink.classList.remove('hidden');
+                sectionFile.classList.add('hidden');
+            } else {
+                tabFile.className = "flex-1 py-2 text-sm font-medium rounded-lg bg-purple-600 text-white transition";
+                tabLink.className = "flex-1 py-2 text-sm font-medium rounded-lg opacity-60 transition";
+                sectionFile.classList.remove('hidden');
+                sectionLink.classList.add('hidden');
+            }
+        }
+
+        function clearInput() { document.getElementById('urlInput').value = ''; }
+
+        function cleanAndExtractUrl(text) {
+            if (!text) return '';
+            const match = text.match(/https?:\/\/[^\s]+/);
+            return match ? match[0] : text.trim();
+        }
+
+        async function processSearch() {
+            const queueCheck = checkAndUpdateQueueLimit();
+            if (!queueCheck.allowed) { alert(queueCheck.message); return; }
+
+            const btn = document.getElementById('submitBtn');
+            const resultContainer = document.getElementById('resultContainer');
+            resultContainer.classList.add('hidden');
+            btn.disabled = true;
+
+            try {
+                let apiRes;
+                if (currentMode === 'link') {
+                    let rawInput = document.getElementById('urlInput').value;
+                    if (!rawInput) { alert('Masukkan link atau teks terlebih dahulu!'); btn.disabled = false; return; }
+
+                    let cleanUrl = cleanAndExtractUrl(rawInput);
+                    document.getElementById('urlInput').value = cleanUrl;
+                    btn.innerText = "Mengambil Audio...";
+
+                    let targetAudioUrl = cleanUrl;
+                    if (cleanUrl.includes('tiktok.com')) {
+                        const tikRes = await fetch(`https://www.tikwm.com/api/?url=${encodeURIComponent(cleanUrl)}`);
+                        const tikData = await tikRes.json();
+                        if (tikData && tikData.data && tikData.data.music) {
+                            targetAudioUrl = tikData.data.music;
+                        } else {
+                            throw new Error('Gagal mengambil audio dari link TikTok tersebut.');
+                        }
+                    }
+
+                    btn.innerText = "Mendeteksi Lagu...";
+                    const formData = new FormData();
+                    formData.append('api_token', AUDD_TOKEN);
+                    formData.append('url', targetAudioUrl);
+                    formData.append('return', 'spotify,apple_music,media');
+
+                    const res = await fetch('https://api.audd.io/', { method: 'POST', body: formData });
+                    apiRes = await res.json();
+                } else {
+                    const fileInput = document.getElementById('fileInput');
+                    if (fileInput.files.length === 0) { alert('Pilih file video/audio terlebih dahulu!'); btn.disabled = false; return; }
+
+                    btn.innerText = "Mengirim File ke API...";
+                    const formData = new FormData();
+                    formData.append('api_token', AUDD_TOKEN);
+                    formData.append('file', fileInput.files[0]);
+                    formData.append('return', 'spotify,apple_music,media');
+
+                    const res = await fetch('https://api.audd.io/', { method: 'POST', body: formData });
+                    apiRes = await res.json();
+                }
+
+                if (apiRes.status === 'success' && apiRes.result) {
+                    const song = apiRes.result;
+                    recordUsage();
+
+                    document.getElementById('songTitle').textContent = song.title || 'Tidak diketahui';
+                    document.getElementById('songArtist').textContent = song.artist || 'Tidak diketahui';
+                    document.getElementById('songAlbum').textContent = `Album: ${song.album || '-'}`;
+                    
+                    const artwork = (song.spotify && song.spotify.album && song.spotify.album.images && song.spotify.album.images[0]) 
+                        ? song.spotify.album.images[0].url 
+                        : 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=400&auto=format&fit=crop&q=80';
+                    document.getElementById('albumArt').src = artwork;
+
+                    const audioWrapper = document.getElementById('audioWrapper');
+                    const audioPlayer = document.getElementById('audioPlayer');
+                    const previewUrl = song.spotify && song.spotify.preview_url;
+                    
+                    if (previewUrl) {
+                        audioPlayer.src = previewUrl;
+                        audioWrapper.classList.remove('hidden');
+                    } else {
+                        audioPlayer.src = '';
+                        audioWrapper.classList.add('hidden');
+                    }
+
+                    const queryStr = encodeURIComponent(`${song.title || ''} ${song.artist || ''}`);
+                    const spotifyLink = document.getElementById('spotifyLink');
+                    if (song.spotify && song.spotify.external_urls && song.spotify.external_urls.spotify) {
+                        spotifyLink.href = song.spotify.external_urls.spotify;
+                        spotifyLink.classList.remove('hidden');
+                    } else {
+                        spotifyLink.href = `https://open.spotify.com/search/${queryStr}`;
+                        spotifyLink.classList.add('hidden');
+                    }
+
+                    const youtubeLink = document.getElementById('youtubeLink');
+                    youtubeLink.href = `https://www.youtube.com/results?search_query=${queryStr}`;
+                    youtubeLink.classList.remove('hidden');
+
+                    resultContainer.classList.remove('hidden');
+                } else {
+                    throw new Error('Lagu tidak ditemukan di database.');
+                }
+            } catch (err) {
+                alert(`Error: ${err.message}`);
+            } finally {
+                btn.disabled = false;
+                btn.innerText = "Cari Lagu";
+            }
+        }
+
+        /* ===== Script Panel Admin ===== */
+        const sfAdminPanel = document.getElementById('sfAdminPanel');
+        const sfAdminCount = document.getElementById('sfAdminCount');
+        const sfAdminResetBtn = document.getElementById('sfAdminResetBtn');
+        const sfAdminLogoutBtn = document.getElementById('sfAdminLogoutBtn');
+        const sfAdminCloseBtn = document.getElementById('sfAdminCloseBtn');
+
+        function openAdminPanel() {
+            if (!isAdminActive()) {
+                const pin = prompt('Masukkan PIN Admin:');
+                if (pin !== SF_ADMIN_PIN) {
+                    if (pin !== null) alert('PIN salah.');
+                    return;
+                }
+                localStorage.setItem(SF_ADMIN_MODE, '1');
+                localStorage.removeItem('SF_COOLDOWN_END');
+            }
+            sfAdminPanel.classList.add('sf-open');
+            if (sfAdminCount) {
+                const currentCount = localStorage.getItem('SF_USAGE_COUNT') || '0';
+                sfAdminCount.textContent = `${currentCount} / 1000 (Unlimited Mode)`;
+            }
+            updateLimitNoticeUI();
+        }
+
+        sfAdminCloseBtn?.addEventListener('click', () => { sfAdminPanel.classList.remove('sf-open'); });
+        sfAdminLogoutBtn?.addEventListener('click', () => {
+            localStorage.removeItem(SF_ADMIN_MODE);
+            sfAdminPanel.classList.remove('sf-open');
+            updateLimitNoticeUI();
+            alert('Berhasil logout dari mode admin. Klik tombol Admin lagi untuk menguji input PIN.');
+        });
+        sfAdminResetBtn?.addEventListener('click', () => {
+            localStorage.removeItem('SF_USAGE_COUNT');
+            localStorage.removeItem('SF_COOLDOWN_END');
+            if (sfAdminCount) sfAdminCount.textContent = '0 / 1000 (Unlimited Mode)';
+            updateLimitNoticeUI();
+            alert('Kuota dan jeda tunggu perangkat berhasil di-reset!');
+        });
+    </script>
+</body>
+</html>
