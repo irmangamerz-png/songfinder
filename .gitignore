@@ -1,5 +1,4 @@
 node_modules/
 .env
-temp_uploads/
+temp/
 *.log
-.DS_Store
