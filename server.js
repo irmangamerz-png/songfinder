@@ -6,14 +6,28 @@ const fs = require('fs');
 const path = require('path');
 const { exec } = require('child_process');
 const FormDataNode = require('form-data');
+const { OpenAI } = require('openai');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Token Loader dinamis dari Environment Variables Railway (Tanpa Hardcode)
+// ===== ENVIRONMENT VARIABLES =====
+const FAMILY_PIN = process.env.FAMILY_PIN || "01092007";
+const ADMIN_PIN = process.env.ADMIN_PIN || "Irman";
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY || null;
+
+// Initialize OpenAI if key exists
+let openaiClient = null;
+if (OPENAI_API_KEY) {
+    openaiClient = new OpenAI({ apiKey: OPENAI_API_KEY });
+    console.log("[OpenAI] Client initialized with API key");
+} else {
+    console.warn("[OpenAI] OPENAI_API_KEY not found - normalization disabled");
+}
+
+// Token Loader dinamis dari Environment Variables Railway
 function loadTokens() {
     let tokens = [];
-    // Mendukung variabel terpisah (AUDD_TOKEN_1, AUDD_TOKEN_2, dst) atau single string koma (AUDD_TOKEN)
     for (let i = 1; i <= 10; i++) {
         if (process.env[`AUDD_TOKEN_${i}`]) {
             tokens.push(process.env[`AUDD_TOKEN_${i}`].trim());
@@ -37,6 +51,122 @@ function rotateToken() {
     if (AUDD_TOKENS.length === 0) return;
     currentTokenIndex = (currentTokenIndex + 1) % AUDD_TOKENS.length;
     console.warn(`[Token Rotated] Beralih ke token indeks ke-${currentTokenIndex}`);
+}
+
+// ===== USER SESSION MANAGEMENT =====
+let userSessions = {};
+const MAX_USER_LIMIT = parseInt(process.env.MAX_LIMIT) || 20;
+const COOLDOWN_HOURS = parseInt(process.env.COOLDOWN_HOURS) || 20;
+
+function getUserSession(userId) {
+    if (!userSessions[userId]) {
+        userSessions[userId] = { count: 0, cooldownUntil: 0 };
+    }
+    return userSessions[userId];
+}
+
+function verifyUserQuota(userId) {
+    const session = getUserSession(userId);
+    const now = Date.now();
+
+    if (now < session.cooldownUntil) {
+        const remainingHours = Math.ceil((session.cooldownUntil - now) / (1000 * 60 * 60));
+        return { allowed: false, message: `Batas kuota habis. Silakan tunggu ${remainingHours} jam lagi.` };
+    }
+
+    if (session.count >= MAX_USER_LIMIT) {
+        session.cooldownUntil = now + (COOLDOWN_HOURS * 60 * 60 * 1000);
+        session.count = 0;
+        return { allowed: false, message: `Batas ${MAX_USER_LIMIT} pencarian tercapai. Cooldown ${COOLDOWN_HOURS} jam dimulai.` };
+    }
+
+    return { allowed: true, remaining: MAX_USER_LIMIT - session.count };
+}
+
+function recordUsage(userId) {
+    const session = getUserSession(userId);
+    session.count++;
+}
+
+// ===== ROLE VERIFICATION =====
+function verifyRole(pin) {
+    if (!pin) return { role: 'user', authorized: true };
+    if (pin === FAMILY_PIN) return { role: 'family', authorized: true };
+    if (pin === ADMIN_PIN) return { role: 'admin', authorized: true };
+    return { role: null, authorized: false };
+}
+
+// ===== OPENAI NORMALIZATION & VALIDATION =====
+async function normalizeWithOpenAI(title, artist, album) {
+    if (!openaiClient) {
+        return { title, artist, album, normalized: false, reason: 'OpenAI not configured' };
+    }
+
+    try {
+        const prompt = `Bersihkan dan normalkan informasi lagu berikut. Pisahkan dengan jelas antara judul lagu dan metadata lainnya.
+
+Input:
+- Title: "${title}"
+- Artist: "${artist}"
+- Album: "${album}"
+
+Tugas:
+1. Pastikan Title adalah nama lagu asli (buang suffix remix/slowed/nightcore/remix jika dalam title)
+2. Pastikan Artist adalah nama artis utama (buang feat/collab dari artist field)
+3. Identifikasi jenis remix/edit: remix, slowed, slowed+reverb, sped-up, nightcore, phonk, breakbeat, bass-boosted, dll
+4. Validasi apakah ini terlihat seperti lagu sungguhan (bukan random text)
+
+Kembalikan response HANYA dalam format JSON berikut (tanpa markdown):
+{
+  "cleanTitle": "judul lagu tanpa suffix remix",
+  "cleanArtist": "nama artis utama",
+  "editionType": "original/remix/slowed/nightcore/phonk/breakbeat/sped-up/bass-boosted/other/unknown",
+  "isValid": true/false,
+  "confidence": 0.0-1.0,
+  "notes": "catatan singkat"
+}`;
+
+        const response = await openaiClient.chat.completions.create({
+            model: 'gpt-3.5-turbo',
+            messages: [
+                {
+                    role: 'user',
+                    content: prompt
+                }
+            ],
+            temperature: 0.3,
+            max_tokens: 200
+        });
+
+        const content = response.choices[0].message.content;
+        const jsonMatch = content.match(/\{[\s\S]*\}/);
+        
+        if (!jsonMatch) {
+            console.warn('[OpenAI] Response tidak valid JSON');
+            return { title, artist, album, normalized: false, reason: 'Invalid response' };
+        }
+
+        const parsed = JSON.parse(jsonMatch[0]);
+        
+        if (!parsed.isValid || parsed.confidence < 0.5) {
+            console.warn('[OpenAI] Confidence rendah:', parsed.confidence);
+            return { title, artist, album, normalized: false, reason: 'Low confidence' };
+        }
+
+        return {
+            title: parsed.cleanTitle || title,
+            artist: parsed.cleanArtist || artist,
+            album: album,
+            editionType: parsed.editionType || 'unknown',
+            normalized: true,
+            confidence: parsed.confidence,
+            notes: parsed.notes
+        };
+
+    } catch (err) {
+        console.error('[OpenAI Error]:', err.message);
+        return { title, artist, album, normalized: false, reason: 'OpenAI API error' };
+    }
 }
 
 // Helper untuk eksekusi perintah shell berbasis Promise
@@ -106,22 +236,19 @@ async function callAuddApi(filePath) {
 
 // Multi-sample recognition: membuat potongan audio dari posisi berbeda
 async function recognizeWithMultiSamples(originalMp3Path, outputDir, baseName) {
-    // 1. Coba sample pertama (full atau bagian awal)
     console.log(`[Recognition] Mencoba sample 1 (Utuh/Awal)...`);
     let res1 = await callAuddApi(originalMp3Path);
     if (res1.recognized) return res1.result;
 
-    // Cek durasi file audio asli menggunakan ffprobe / ffmpeg info
-    let duration = 30; // default asumsi
+    let duration = 30;
     try {
         const probeOut = await runCommand(`ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${originalMp3Path}"`);
         duration = parseFloat(probeOut) || 30;
     } catch (e) {
-        // abaikan jika ffprobe gagal, gunakan default
+        // abaikan
     }
 
     if (duration > 15) {
-        // Buat sample ke-2 (di tengah)
         const midTime = Math.floor(duration / 2);
         const sample2Path = path.join(outputDir, `${baseName}_mid.mp3`);
         try {
@@ -136,7 +263,6 @@ async function recognizeWithMultiSamples(originalMp3Path, outputDir, baseName) {
             if (fs.existsSync(sample2Path)) fs.unlinkSync(sample2Path);
         }
 
-        // Buat sample ke-3 (di seperempat akhir / variasi lain jika durasi cukup)
         if (duration > 30) {
             const quarterTime = Math.floor(duration * 0.75);
             const sample3Path = path.join(outputDir, `${baseName}_end.mp3`);
@@ -154,7 +280,7 @@ async function recognizeWithMultiSamples(originalMp3Path, outputDir, baseName) {
         }
     }
 
-    return null; // Seluruh sample gagal dikenali
+    return null;
 }
 
 // Resolver short URL TikTok
@@ -187,10 +313,30 @@ app.get('/', (req, res) => {
     res.send(`SongFinder Backend Active. Loaded Tokens: ${AUDD_TOKENS.length}`);
 });
 
-// Endpoint URL / Search Query
+// ===== ENDPOINT RECOGNIZE URL DENGAN ROLE-BASED QUOTA =====
 app.post('/api/recognize-url', async (req, res) => {
-    let { url } = req.body;
+    let { url, userId = 'default_user', pin } = req.body;
+    
     if (!url) return res.status(400).json({ success: false, message: 'Input kosong.' });
+
+    // Verify role
+    const roleCheck = verifyRole(pin);
+    if (!roleCheck.authorized) {
+        return res.status(401).json({ success: false, message: 'PIN tidak valid', role: null });
+    }
+
+    // Check quota untuk user reguler saja
+    if (roleCheck.role === 'user') {
+        const quotaCheck = verifyUserQuota(userId);
+        if (!quotaCheck.allowed) {
+            return res.status(429).json({ 
+                success: false, 
+                message: quotaCheck.message,
+                role: 'user',
+                attemptsLeft: 0
+            });
+        }
+    }
 
     url = url.trim();
     let targetCommandTarget = '';
@@ -206,7 +352,6 @@ app.post('/api/recognize-url', async (req, res) => {
     const outputPattern = path.join(uploadDir, uniqueId);
     const finalMp3Path = `${outputPattern}.mp3`;
 
-    // Menggunakan yt-dlp pre-installed di Railway tanpa pip install runtime
     const ytDlpCommand = `yt-dlp -x --audio-format mp3 --audio-quality 0 --no-playlist --extractor-args youtube:player_client=android,web -o "${outputPattern}.%(ext)s" "${targetCommandTarget}"`;
 
     let generatedAudioFile = null;
@@ -215,7 +360,6 @@ app.post('/api/recognize-url', async (req, res) => {
         console.log(`[yt-dlp] Mengambil media dari: ${targetCommandTarget}`);
         await runCommand(ytDlpCommand);
 
-        // Cari file hasil ekstrak mp3
         const files = fs.readdirSync(uploadDir);
         generatedAudioFile = files.find(file => file.startsWith(uniqueId) && file.endsWith('.mp3'));
 
@@ -230,16 +374,64 @@ app.post('/api/recognize-url', async (req, res) => {
             return res.status(500).json({ success: false, message: 'File audio terlalu kecil atau kosong.' });
         }
 
-        // Jalankan Multi-Sample Recognition (Tanpa fallback metadata TikTok sama sekali)
-        const songResult = await recognizeWithMultiSamples(fullAudioPath, uploadDir, uniqueId);
+        // Multi-Sample Recognition
+        let songResult = await recognizeWithMultiSamples(fullAudioPath, uploadDir, uniqueId);
 
         // Cleanup file utama
         if (fs.existsSync(fullAudioPath)) fs.unlinkSync(fullAudioPath);
 
         if (songResult) {
-            return res.json({ success: true, result: songResult });
+            let title = songResult.title || 'Unknown';
+            let artist = songResult.artist || 'Unknown';
+            let album = songResult.album || '';
+            let youtubeMusic = songResult.result_spotify || '';
+            let appleMusic = songResult.result_apple_music || '';
+
+            // Normalisasi dengan OpenAI jika available
+            if (openaiClient && title !== 'Unknown' && artist !== 'Unknown') {
+                const normalized = await normalizeWithOpenAI(title, artist, album);
+                if (normalized.normalized) {
+                    title = normalized.title;
+                    artist = normalized.artist;
+                    console.log(`[OpenAI] Normalized: ${title} - ${artist} (Edition: ${normalized.editionType})`);
+                }
+            }
+
+            // Prepare response
+            const response = {
+                success: true,
+                role: roleCheck.role,
+                title: title,
+                artist: artist,
+                album: album,
+                spotify: youtubeMusic,
+                apple_music: appleMusic,
+                // Clip hanya untuk Family dan Admin
+                clip: (roleCheck.role === 'family' || roleCheck.role === 'admin') && songResult.result_clip ? songResult.result_clip : null
+            };
+
+            // Add quota info untuk user reguler
+            if (roleCheck.role === 'user') {
+                recordUsage(userId);
+                const remaining = MAX_USER_LIMIT - getUserSession(userId).count;
+                response.attemptsLeft = remaining;
+            }
+
+            return res.json(response);
         } else {
-            return res.json({ success: false, message: 'Lagu tidak dikenali' });
+            const response = { 
+                success: false, 
+                message: 'Lagu tidak dikenali',
+                role: roleCheck.role
+            };
+
+            if (roleCheck.role === 'user') {
+                recordUsage(userId);
+                const remaining = MAX_USER_LIMIT - getUserSession(userId).count;
+                response.attemptsLeft = remaining;
+            }
+
+            return res.json(response);
         }
 
     } catch (err) {
@@ -252,10 +444,22 @@ app.post('/api/recognize-url', async (req, res) => {
         } else if (err.message.includes('TOKEN_EXHAUSTED')) {
             userMsg = 'Recognition API gagal (Kuota token habis)';
         }
-        return res.status(500).json({ success: false, message: userMsg });
+        
+        const response = { 
+            success: false, 
+            message: userMsg,
+            role: roleCheck.role
+        };
+
+        if (roleCheck.role === 'user') {
+            recordUsage(userId);
+            const remaining = MAX_USER_LIMIT - getUserSession(userId).count;
+            response.attemptsLeft = remaining;
+        }
+
+        return res.status(500).json(response);
 
     } finally {
-        // Pastikan pembersihan file temp tuntas mencegah penumpukan sampah
         try {
             const leftoverFiles = fs.readdirSync(uploadDir);
             leftoverFiles.forEach(file => {
@@ -265,30 +469,108 @@ app.post('/api/recognize-url', async (req, res) => {
                 }
             });
         } catch (cleanupErr) {
-            // abaikan error cleanup minor
+            // abaikan
         }
     }
 });
 
-// Endpoint Upload File
+// ===== ENDPOINT RECOGNIZE FILE DENGAN ROLE-BASED QUOTA =====
 app.post('/api/recognize-file', upload.single('file'), async (req, res) => {
     let filePath = null;
+    let { userId = 'default_user', pin } = req.body;
+
+    // Verify role
+    const roleCheck = verifyRole(pin);
+    if (!roleCheck.authorized) {
+        return res.status(401).json({ success: false, message: 'PIN tidak valid', role: null });
+    }
+
+    // Check quota untuk user reguler saja
+    if (roleCheck.role === 'user') {
+        const quotaCheck = verifyUserQuota(userId);
+        if (!quotaCheck.allowed) {
+            return res.status(429).json({ 
+                success: false, 
+                message: quotaCheck.message,
+                role: 'user',
+                attemptsLeft: 0
+            });
+        }
+    }
+
     try {
         if (!req.file) return res.status(400).json({ success: false, message: 'File tidak ada.' });
 
         filePath = req.file.path;
         const uniqueId = `upload_${Date.now()}`;
         
-        const songResult = await recognizeWithMultiSamples(filePath, uploadDir, uniqueId);
+        let songResult = await recognizeWithMultiSamples(filePath, uploadDir, uniqueId);
 
         if (songResult) {
-            return res.json({ success: true, result: songResult });
+            let title = songResult.title || 'Unknown';
+            let artist = songResult.artist || 'Unknown';
+            let album = songResult.album || '';
+            let youtubeMusic = songResult.result_spotify || '';
+            let appleMusic = songResult.result_apple_music || '';
+
+            // Normalisasi dengan OpenAI jika available
+            if (openaiClient && title !== 'Unknown' && artist !== 'Unknown') {
+                const normalized = await normalizeWithOpenAI(title, artist, album);
+                if (normalized.normalized) {
+                    title = normalized.title;
+                    artist = normalized.artist;
+                    console.log(`[OpenAI] Normalized: ${title} - ${artist}`);
+                }
+            }
+
+            const response = {
+                success: true,
+                role: roleCheck.role,
+                title: title,
+                artist: artist,
+                album: album,
+                spotify: youtubeMusic,
+                apple_music: appleMusic,
+                clip: (roleCheck.role === 'family' || roleCheck.role === 'admin') && songResult.result_clip ? songResult.result_clip : null
+            };
+
+            if (roleCheck.role === 'user') {
+                recordUsage(userId);
+                const remaining = MAX_USER_LIMIT - getUserSession(userId).count;
+                response.attemptsLeft = remaining;
+            }
+
+            return res.json(response);
         } else {
-            return res.json({ success: false, message: 'Lagu tidak dikenali' });
+            const response = { 
+                success: false, 
+                message: 'Lagu tidak dikenali',
+                role: roleCheck.role
+            };
+
+            if (roleCheck.role === 'user') {
+                recordUsage(userId);
+                const remaining = MAX_USER_LIMIT - getUserSession(userId).count;
+                response.attemptsLeft = remaining;
+            }
+
+            return res.json(response);
         }
     } catch (err) {
         console.error("[Upload Error]:", err.message);
-        return res.status(500).json({ success: false, message: 'Recognition API gagal' });
+        const response = { 
+            success: false, 
+            message: 'Recognition API gagal',
+            role: roleCheck.role
+        };
+
+        if (roleCheck.role === 'user') {
+            recordUsage(userId);
+            const remaining = MAX_USER_LIMIT - getUserSession(userId).count;
+            response.attemptsLeft = remaining;
+        }
+
+        return res.status(500).json(response);
     } finally {
         if (filePath && fs.existsSync(filePath)) {
             try { fs.unlinkSync(filePath); } catch (e) {}
