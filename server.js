@@ -9,8 +9,8 @@ const { exec } = require('child_process');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Membaca token dari Railway. Jika dipisah koma, otomatis jadi daftar cadangan.
-const rawTokens = process.env.AUDD_TOKEN || 'bc19167188cfb76c3692367bb5b36355';
+// Membaca token dari Railway atau menggunakan 3 token bawaan ini secara otomatis
+const rawTokens = process.env.AUDD_TOKEN || 'bc19167188cfb76c3692367bb5b36355,9fd164b2d84f0af4d07f3ef9bb62359e,c939f583446b27c6aa1a2a51cd403e50';
 const AUDD_TOKENS = rawTokens.split(',').map(t => t.trim()).filter(t => t.length > 0);
 
 let currentTokenIndex = 0;
@@ -61,18 +61,18 @@ async function recognizeWithAudd(filePath) {
     throw new Error('Semua token AudD gagal atau habis kuotanya.');
 }
 
-// Fungsi untuk memperluas link pendek (seperti vm.tiktok.com) menjadi link panjang aslinya
+// Fungsi untuk memperluas link pendek (seperti vm.tiktok.com)
 async function resolveShortUrl(inputUrl) {
     try {
         if (!inputUrl.includes('vm.tiktok.com') && !inputUrl.includes('vt.tiktok.com')) {
-            return inputUrl; // Jika bukan link pendek, kembalikan apa adanya
+            return inputUrl;
         }
         
         console.log(`[Redirect] Melacak link pendek: ${inputUrl}`);
         const response = await axios.get(inputUrl, {
             maxRedirects: 5,
             validateStatus: function (status) {
-                return status >= 200 && status < 400; // Tangkap status redirect
+                return status >= 200 && status < 400;
             },
             headers: {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
@@ -101,23 +101,33 @@ app.get('/', (req, res) => {
     res.send(`SongFinder Backend Active. Total loaded tokens: ${AUDD_TOKENS.length}`);
 });
 
-// Endpoint URL TikTok / Media dengan Auto-Resolve Short Link
+// Endpoint URL / Teks Pencarian Lagu
 app.post('/api/recognize-url', async (req, res) => {
-    const { url } = req.body;
-    if (!url) return res.status(400).json({ success: false, message: 'URL kosong.' });
+    let { url } = req.body;
+    if (!url) return res.status(400).json({ success: false, message: 'Input kosong.' });
 
-    // Lacak dulu jika itu link pendek TikTok
-    const targetUrl = await resolveShortUrl(url);
+    url = url.trim();
+    let targetCommandTarget = '';
+
+    // Cek apakah input berupa link atau teks judul lagu biasa
+    const isUrl = url.startsWith('http://') || url.startsWith('https://');
+
+    if (isUrl) {
+        const resolved = await resolveShortUrl(url);
+        targetCommandTarget = resolved;
+        console.log(`[yt-dlp] Memproses URL: ${targetCommandTarget}`);
+    } else {
+        targetCommandTarget = `ytsearch1:${url}`;
+        console.log(`[yt-dlp] Mencari kata kunci via YouTube Search: "${url}"`);
+    }
 
     const outputFilePath = path.join(uploadDir, `audio_${Date.now()}.mp3`);
-    const command = `yt-dlp -x --audio-format mp3 --no-playlist -o "${outputFilePath.replace('.mp3', '')}.%(ext)s" "${targetUrl}"`;
-
-    console.log(`[yt-dlp] Memulai download dari URL: ${targetUrl}`);
+    const command = `yt-dlp -x --audio-format mp3 --audio-quality 0 --no-playlist --extractor-args youtube:player_client=android,web -o "${outputFilePath.replace('.mp3', '')}.%(ext)s" "${targetCommandTarget}"`;
 
     exec(command, async (error, stdout, stderr) => {
         if (error) {
             console.error("[yt-dlp Error]", stderr);
-            return res.status(500).json({ success: false, message: 'Gagal mendownload audio dari URL (yt-dlp error).' });
+            return res.status(500).json({ success: false, message: 'Gagal mendownload/mencari audio (yt-dlp error).' });
         }
 
         try {
@@ -126,7 +136,7 @@ app.post('/api/recognize-url', async (req, res) => {
 
             if (!generatedFile) {
                 console.error("[yt-dlp] File MP3 hasil ekstrak tidak ditemukan di folder temp.");
-                return res.status(500).json({ success: false, message: 'Gagal mengekstrak audio dari URL.' });
+                return res.status(500).json({ success: false, message: 'Gagal mengekstrak audio.' });
             }
 
             const finalAudioPath = path.join(uploadDir, generatedFile);
