@@ -8,9 +8,70 @@ const { exec } = require('child_process');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const AUDD_TOKEN = process.env.AUDD_TOKEN || '9fd164b2d84f0af4d07f3ef9bb62359e';
 
-// Konfigurasi CORS agar diizinkan oleh GitHub Pages
+// Daftar Token Cadangan (Gabungkan token lama dan token baru kamu di sini)
+// Jika token pertama habis, sistem otomatis lanjut ke token kedua, dst.
+const AUDD_TOKENS = [
+    'bc19167188cfb76c3692367bb5b36355', // Token baru kamu
+    '9fd164b2d84f0af4d07f3ef9bb62359e'  // Token lama sebagai cadangan
+];
+
+let currentTokenIndex = 0;
+
+function getActiveToken() {
+    return AUDD_TOKENS[currentTokenIndex];
+}
+
+function rotateToken() {
+    currentTokenIndex = (currentTokenIndex + 1) % AUDD_TOKENS.length;
+    console.log(`[Token Switch] Berpindah ke token alternatif indeks ke-${currentTokenIndex}`);
+}
+
+// Fungsi pembantu untuk mengirim permintaan ke AudD dengan sistem otomatis pindah token jika gagal
+async function recognizeWithAudd(filePathOrStream, isStream = false) {
+    let attempts = 0;
+    while (attempts < AUDD_TOKENS.length) {
+        const token = getActiveToken();
+        const FormDataNode = require('form-data');
+        const form = new FormDataNode();
+        form.append('api_token', token);
+        
+        if (isStream) {
+            form.append('file', filePathOrStream);
+        } else {
+            form.append('file', fs.createReadStream(filePathOrStream));
+        }
+        form.append('return', 'apple_music,spotify');
+
+        try {
+            const auddResponse = await axios.post('https://api.audd.io/', form, {
+                headers: form.getHeaders()
+            });
+
+            // Jika berhasil dan status sukses, kembalikan hasilnya
+            if (auddResponse.data && auddResponse.data.status === 'success') {
+                return auddResponse.data;
+            }
+
+            // Jika error karena token habis/invalid (kode error 900 atau sejenisnya)
+            if (auddResponse.data && auddResponse.data.error) {
+                console.warn(`[Token Warning] Token ${token} bermasalah:`, auddResponse.data.error.error_message);
+                rotateToken();
+                attempts++;
+                continue;
+            }
+
+            return auddResponse.data;
+        } catch (err) {
+            console.error(`[Error] Gagal menggunakan token ${token}:`, err.message);
+            rotateToken();
+            attempts++;
+        }
+    }
+    throw new Error('Semua token AudD gagal atau habis kuotanya.');
+}
+
+// Konfigurasi CORS
 app.use(cors({
     origin: '*',
     methods: ['GET', 'POST'],
@@ -19,7 +80,6 @@ app.use(cors({
 
 app.use(express.json());
 
-// Setup folder penyimpanan sementara untuk file audio
 const uploadDir = path.join(__dirname, 'temp');
 if (!fs.existsSync(uploadDir)) {
     fs.mkdirSync(uploadDir, { recursive: true });
@@ -27,12 +87,11 @@ if (!fs.existsSync(uploadDir)) {
 
 const upload = multer({ dest: uploadDir });
 
-// Endpoint utama untuk tes status server
 app.get('/', (req, res) => {
-    res.send('SongFinder Backend Server is Running Smoothly!');
+    res.send('SongFinder Backend Server with Auto-Token Rotation is Running!');
 });
 
-// Endpoint 1: Proses berdasarkan URL TikTok / Media
+// Endpoint 1: URL TikTok / Media
 app.post('/api/recognize-url', async (req, res) => {
     const { url } = req.body;
     if (!url) {
@@ -40,8 +99,6 @@ app.post('/api/recognize-url', async (req, res) => {
     }
 
     const outputFilePath = path.join(uploadDir, `audio_${Date.now()}.mp3`);
-    
-    // Perintah yt-dlp yang dioptimalkan untuk ekstraksi audio stabil
     const command = `yt-dlp -x --audio-format mp3 --no-playlist -o "${outputFilePath.replace('.mp3', '')}.%(ext)s" "${url}"`;
 
     exec(command, async (error, stdout, stderr) => {
@@ -56,22 +113,15 @@ app.post('/api/recognize-url', async (req, res) => {
 
             const finalAudioPath = path.join(uploadDir, generatedFile);
 
-            const FormDataNode = require('form-data');
-            const form = new FormDataNode();
-            form.append('api_token', AUDD_TOKEN);
-            form.append('file', fs.createReadStream(finalAudioPath));
-            form.append('return', 'apple_music,spotify');
-
-            const auddResponse = await axios.post('https://api.audd.io/', form, {
-                headers: form.getHeaders()
-            });
+            // Memanggil fungsi pengenalan dengan fitur rotasi otomatis
+            const auddResult = await recognizeWithAudd(finalAudioPath, false);
 
             if (fs.existsSync(finalAudioPath)) fs.unlinkSync(finalAudioPath);
 
-            if (auddResponse.data && auddResponse.data.status === 'success') {
+            if (auddResult && auddResult.status === 'success') {
                 return res.json({
                     success: true,
-                    result: auddResponse.data.result
+                    result: auddResult.result
                 });
             } else {
                 return res.json({
@@ -87,7 +137,7 @@ app.post('/api/recognize-url', async (req, res) => {
     });
 });
 
-// Endpoint 2: Proses berdasarkan Upload File Langsung
+// Endpoint 2: Upload File Langsung
 app.post('/api/recognize-file', upload.single('file'), async (req, res) => {
     try {
         if (!req.file) {
@@ -95,23 +145,14 @@ app.post('/api/recognize-file', upload.single('file'), async (req, res) => {
         }
 
         const filePath = req.file.path;
-
-        const FormDataNode = require('form-data');
-        const form = new FormDataNode();
-        form.append('api_token', AUDD_TOKEN);
-        form.append('file', fs.createReadStream(filePath));
-        form.append('return', 'apple_music,spotify');
-
-        const auddResponse = await axios.post('https://api.audd.io/', form, {
-            headers: form.getHeaders()
-        });
+        const auddResult = await recognizeWithAudd(filePath, false);
 
         if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
 
-        if (auddResponse.data && auddResponse.data.status === 'success') {
+        if (auddResult && auddResult.status === 'success') {
             return res.json({
                 success: true,
-                result: auddResponse.data.result
+                result: auddResult.result
             });
         } else {
             return res.json({
