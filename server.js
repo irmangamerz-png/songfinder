@@ -40,7 +40,9 @@ app.post('/api/recognize-url', async (req, res) => {
     }
 
     const outputFilePath = path.join(uploadDir, `audio_${Date.now()}.mp3`);
-    const command = `yt-dlp -x --audio-format mp3 -o "${outputFilePath.replace('.mp3', '')}.%(ext)s" "${url}"`;
+    
+    // Perintah yt-dlp yang dioptimalkan untuk ekstraksi audio stabil
+    const command = `yt-dlp -x --audio-format mp3 --no-playlist -o "${outputFilePath.replace('.mp3', '')}.%(ext)s" "${url}"`;
 
     exec(command, async (error, stdout, stderr) => {
         try {
@@ -48,6 +50,7 @@ app.post('/api/recognize-url', async (req, res) => {
             const generatedFile = files.find(file => file.endsWith('.mp3') && file.startsWith('audio_'));
 
             if (!generatedFile) {
+                console.error("Gagal ekstrak yt-dlp:", stderr);
                 return res.status(500).json({ success: false, message: 'Gagal mengekstrak audio dari URL tersebut.' });
             }
 
