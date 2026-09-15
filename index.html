@@ -1,4 +1,4 @@
- <!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="id" id="htmlRoot">
 <head>
     <meta charset="UTF-8">
@@ -193,7 +193,7 @@
     </div>
 
     <script>
-        // ✅ URL Railway Backend Baru Kamu (Sudah Terhubung)
+        // ✅ URL Railway Backend yang Sudah Terhubung
         const BACKEND_API_URL = "https://songfinder-production-b76d.up.railway.app"; 
 
         let currentMode = 'link';
@@ -344,7 +344,7 @@
             }
         }
 
-        async function fetchWithTimeout(resource, options = {}, timeout = 45000) {
+        async function fetchWithTimeout(resource, options = {}, timeout = 60000) {
             const controller = new AbortController();
             const id = setTimeout(() => controller.abort(), timeout);
             try {
@@ -427,12 +427,12 @@
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify(payload)
-                    }, 45000);
+                    }, 60000);
                 } else {
                     response = await fetchWithTimeout(apiEndpoint, {
                         method: 'POST',
                         body: formData
-                    }, 45000);
+                    }, 60000);
                 }
 
                 const apiRes = await response.json();
@@ -448,7 +448,7 @@
                 }
 
             } catch (err) {
-                alert(err.message || 'Terjadi kesalahan pada sistem saat memproses audio.');
+                alert('Gagal terhubung ke server atau waktu proses habis. Pastikan link TikTok aktif.');
             } finally {
                 btn.disabled = false;
                 btn.innerText = "Kenali Audio Otomatis";
@@ -522,4 +522,4 @@
         });
     </script>
 </body>
-</html>                      
+</html>
