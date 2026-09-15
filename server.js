@@ -40,12 +40,10 @@ async function recognizeWithAudd(filePath) {
                 headers: form.getHeaders()
             });
 
-            // Jika berhasil sukses
             if (auddResponse.data && auddResponse.data.status === 'success') {
                 return auddResponse.data;
             }
 
-            // Jika error karena token bermasalah / habis (kode error 900)
             if (auddResponse.data && auddResponse.data.error) {
                 console.warn(`[Token Warning] Token aktif bermasalah:`, auddResponse.data.error.error_message);
                 rotateToken();
@@ -63,6 +61,33 @@ async function recognizeWithAudd(filePath) {
     throw new Error('Semua token AudD gagal atau habis kuotanya.');
 }
 
+// Fungsi untuk memperluas link pendek (seperti vm.tiktok.com) menjadi link panjang aslinya
+async function resolveShortUrl(inputUrl) {
+    try {
+        if (!inputUrl.includes('vm.tiktok.com') && !inputUrl.includes('vt.tiktok.com')) {
+            return inputUrl; // Jika bukan link pendek, kembalikan apa adanya
+        }
+        
+        console.log(`[Redirect] Melacak link pendek: ${inputUrl}`);
+        const response = await axios.get(inputUrl, {
+            maxRedirects: 5,
+            validateStatus: function (status) {
+                return status >= 200 && status < 400; // Tangkap status redirect
+            },
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            }
+        });
+
+        const finalUrl = response.request.res.responseUrl || inputUrl;
+        console.log(`[Redirect Success] Link panjang ditemukan: ${finalUrl}`);
+        return finalUrl;
+    } catch (err) {
+        console.warn(`[Redirect Warning] Gagal melacak link pendek, mencoba menggunakan link asli:`, err.message);
+        return inputUrl;
+    }
+}
+
 app.use(cors({ origin: '*', methods: ['GET', 'POST'], allowedHeaders: ['Content-Type'] }));
 app.use(express.json());
 
@@ -76,15 +101,18 @@ app.get('/', (req, res) => {
     res.send(`SongFinder Backend Active. Total loaded tokens: ${AUDD_TOKENS.length}`);
 });
 
-// Endpoint URL TikTok / Media dengan Log Pengecekan Ekstraksi
+// Endpoint URL TikTok / Media dengan Auto-Resolve Short Link
 app.post('/api/recognize-url', async (req, res) => {
     const { url } = req.body;
     if (!url) return res.status(400).json({ success: false, message: 'URL kosong.' });
 
-    const outputFilePath = path.join(uploadDir, `audio_${Date.now()}.mp3`);
-    const command = `yt-dlp -x --audio-format mp3 --no-playlist -o "${outputFilePath.replace('.mp3', '')}.%(ext)s" "${url}"`;
+    // Lacak dulu jika itu link pendek TikTok
+    const targetUrl = await resolveShortUrl(url);
 
-    console.log(`[yt-dlp] Memulai download dari URL: ${url}`);
+    const outputFilePath = path.join(uploadDir, `audio_${Date.now()}.mp3`);
+    const command = `yt-dlp -x --audio-format mp3 --no-playlist -o "${outputFilePath.replace('.mp3', '')}.%(ext)s" "${targetUrl}"`;
+
+    console.log(`[yt-dlp] Memulai download dari URL: ${targetUrl}`);
 
     exec(command, async (error, stdout, stderr) => {
         if (error) {
