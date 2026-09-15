@@ -9,7 +9,7 @@ const { exec } = require('child_process');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Membaca token dari Railway atau menggunakan 3 token bawaan ini secara otomatis
+// Token Cadangan Otomatis
 const rawTokens = process.env.AUDD_TOKEN || 'bc19167188cfb76c3692367bb5b36355,9fd164b2d84f0af4d07f3ef9bb62359e,c939f583446b27c6aa1a2a51cd403e50';
 const AUDD_TOKENS = rawTokens.split(',').map(t => t.trim()).filter(t => t.length > 0);
 
@@ -21,10 +21,9 @@ function getActiveToken() {
 
 function rotateToken() {
     currentTokenIndex = (currentTokenIndex + 1) % AUDD_TOKENS.length;
-    console.log(`[Token Switch] Kuota token habis/invalid, berpindah ke token cadangan indeks ke-${currentTokenIndex}`);
+    console.log(`[Token Switch] Berpindah ke token cadangan indeks ke-${currentTokenIndex}`);
 }
 
-// Fungsi otomatis mencoba token bergantian jika gagal
 async function recognizeWithAudd(filePath) {
     let attempts = 0;
     while (attempts < AUDD_TOKENS.length) {
@@ -45,7 +44,7 @@ async function recognizeWithAudd(filePath) {
             }
 
             if (auddResponse.data && auddResponse.data.error) {
-                console.warn(`[Token Warning] Token aktif bermasalah:`, auddResponse.data.error.error_message);
+                console.warn(`[Token Warning]:`, auddResponse.data.error.error_message);
                 rotateToken();
                 attempts++;
                 continue;
@@ -53,7 +52,7 @@ async function recognizeWithAudd(filePath) {
 
             return auddResponse.data;
         } catch (err) {
-            console.error(`[Error] Gagal koneksi dengan token aktif:`, err.message);
+            console.error(`[Error Koneksi]:`, err.message);
             rotateToken();
             attempts++;
         }
@@ -61,29 +60,18 @@ async function recognizeWithAudd(filePath) {
     throw new Error('Semua token AudD gagal atau habis kuotanya.');
 }
 
-// Fungsi untuk memperluas link pendek (seperti vm.tiktok.com)
 async function resolveShortUrl(inputUrl) {
     try {
         if (!inputUrl.includes('vm.tiktok.com') && !inputUrl.includes('vt.tiktok.com')) {
             return inputUrl;
         }
-        
-        console.log(`[Redirect] Melacak link pendek: ${inputUrl}`);
         const response = await axios.get(inputUrl, {
             maxRedirects: 5,
-            validateStatus: function (status) {
-                return status >= 200 && status < 400;
-            },
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-            }
+            validateStatus: (status) => status >= 200 && status < 400,
+            headers: { 'User-Agent': 'Mozilla/5.0' }
         });
-
-        const finalUrl = response.request.res.responseUrl || inputUrl;
-        console.log(`[Redirect Success] Link panjang ditemukan: ${finalUrl}`);
-        return finalUrl;
+        return response.request.res.responseUrl || inputUrl;
     } catch (err) {
-        console.warn(`[Redirect Warning] Gagal melacak link pendek, mencoba menggunakan link asli:`, err.message);
         return inputUrl;
     }
 }
@@ -98,54 +86,52 @@ if (!fs.existsSync(uploadDir)) {
 const upload = multer({ dest: uploadDir });
 
 app.get('/', (req, res) => {
-    res.send(`SongFinder Backend Active. Total loaded tokens: ${AUDD_TOKENS.length}`);
+    res.send(`SongFinder Backend Active. Tokens loaded: ${AUDD_TOKENS.length}`);
 });
 
-// Endpoint URL / Teks Pencarian Lagu
 app.post('/api/recognize-url', async (req, res) => {
     let { url } = req.body;
     if (!url) return res.status(400).json({ success: false, message: 'Input kosong.' });
 
     url = url.trim();
     let targetCommandTarget = '';
-
-    // Cek apakah input berupa link atau teks judul lagu biasa
     const isUrl = url.startsWith('http://') || url.startsWith('https://');
 
     if (isUrl) {
-        const resolved = await resolveShortUrl(url);
-        targetCommandTarget = resolved;
-        console.log(`[yt-dlp] Memproses URL: ${targetCommandTarget}`);
+        targetCommandTarget = await resolveShortUrl(url);
     } else {
         targetCommandTarget = `ytsearch1:${url}`;
-        console.log(`[yt-dlp] Mencari kata kunci via YouTube Search: "${url}"`);
     }
 
-    const outputFilePath = path.join(uploadDir, `audio_${Date.now()}.mp3`);
-    const command = `yt-dlp -x --audio-format mp3 --audio-quality 0 --no-playlist --extractor-args youtube:player_client=android,web -o "${outputFilePath.replace('.mp3', '')}.%(ext)s" "${targetCommandTarget}"`;
+    const outputFileName = `audio_${Date.now()}`;
+    const outputFilePath = path.join(uploadDir, `${outputFileName}.mp3`);
+
+    // Perintah sakti: Update yt-dlp otomatis + download audio terbaik dengan ekstensi pasti .mp3
+    const command = `pip install --upgrade yt-dlp && yt-dlp -x --audio-format mp3 --audio-quality 0 --no-playlist --extractor-args youtube:player_client=android,web -o "${path.join(uploadDir, outputFileName)}.%(ext)s" "${targetCommandTarget}"`;
+
+    console.log(`[Eksekusi yt-dlp]: ${targetCommandTarget}`);
 
     exec(command, async (error, stdout, stderr) => {
         if (error) {
             console.error("[yt-dlp Error]", stderr);
-            return res.status(500).json({ success: false, message: 'Gagal mendownload/mencari audio (yt-dlp error).' });
+            return res.status(500).json({ success: false, message: 'Gagal mendownload audio dari sumber.' });
         }
 
         try {
+            // Cari file apa pun yang berawalan nama unik tersebut di folder temp
             const files = fs.readdirSync(uploadDir);
-            const generatedFile = files.find(file => file.endsWith('.mp3') && file.startsWith('audio_'));
+            const generatedFile = files.find(file => file.startsWith(outputFileName));
 
             if (!generatedFile) {
-                console.error("[yt-dlp] File MP3 hasil ekstrak tidak ditemukan di folder temp.");
-                return res.status(500).json({ success: false, message: 'Gagal mengekstrak audio.' });
+                return res.status(500).json({ success: false, message: 'File hasil ekstrak audio tidak ditemukan.' });
             }
 
             const finalAudioPath = path.join(uploadDir, generatedFile);
             const stats = fs.statSync(finalAudioPath);
-            console.log(`[Audio Ready] File berhasil dibuat: ${finalAudioPath}, Ukuran: ${stats.size} bytes`);
 
             if (stats.size < 1000) {
                 if (fs.existsSync(finalAudioPath)) fs.unlinkSync(finalAudioPath);
-                return res.status(500).json({ success: false, message: 'File hasil download kosong atau rusak.' });
+                return res.status(500).json({ success: false, message: 'File audio kosong atau gagal diproses.' });
             }
 
             const auddResult = await recognizeWithAudd(finalAudioPath);
@@ -155,17 +141,15 @@ app.post('/api/recognize-url', async (req, res) => {
             if (auddResult && auddResult.status === 'success') {
                 return res.json({ success: true, result: auddResult.result });
             } else {
-                console.log("[AudD Respon Kosong]:", auddResult);
-                return res.json({ success: false, message: 'Lagu tidak ditemukan dalam database.' });
+                return res.json({ success: false, message: 'Lagu tidak dikenal / tidak ditemukan dalam database.' });
             }
         } catch (err) {
-            console.error("[Server Error saat proses file]:", err);
-            return res.status(500).json({ success: false, message: 'Kesalahan server saat memproses audio.' });
+            console.error("[Server Error]:", err);
+            return res.status(500).json({ success: false, message: 'Kesalahan sistem saat memproses lagu.' });
         }
     });
 });
 
-// Endpoint Upload File
 app.post('/api/recognize-file', upload.single('file'), async (req, res) => {
     try {
         if (!req.file) return res.status(400).json({ success: false, message: 'File tidak ada.' });
@@ -178,7 +162,7 @@ app.post('/api/recognize-file', upload.single('file'), async (req, res) => {
         if (auddResult && auddResult.status === 'success') {
             return res.json({ success: true, result: auddResult.result });
         } else {
-            return res.json({ success: false, message: 'Lagu tidak ditemukan.' });
+            return res.json({ success: false, message: 'Lagu tidak dikenal.' });
         }
     } catch (err) {
         console.error(err);
