@@ -225,8 +225,9 @@ if (!fs.existsSync(uploadDir)) {
 }
 const upload = multer({ dest: uploadDir });
 
+app.use(express.static(__dirname));
 app.get('/', (req, res) => {
-    res.send(`SongFinder Backend Active. Loaded Tokens: ${AUDD_TOKENS.length}`);
+    res.sendFile(path.join(__dirname, 'index.html'));
 });
 
 // ===== ENDPOINT RECOGNIZE URL DENGAN ROLE-BASED QUOTA =====
