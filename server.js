@@ -6,7 +6,6 @@ const fs = require('fs');
 const path = require('path');
 const { exec } = require('child_process');
 const FormDataNode = require('form-data');
-const { OpenAI } = require('openai');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -14,16 +13,6 @@ const PORT = process.env.PORT || 3000;
 // ===== ENVIRONMENT VARIABLES =====
 const FAMILY_PIN = process.env.FAMILY_PIN || "01092007";
 const ADMIN_PIN = process.env.ADMIN_PIN || "Irman";
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY || null;
-
-// Initialize OpenAI if key exists
-let openaiClient = null;
-if (OPENAI_API_KEY) {
-    openaiClient = new OpenAI({ apiKey: OPENAI_API_KEY });
-    console.log("[OpenAI] Client initialized with API key");
-} else {
-    console.warn("[OpenAI] OPENAI_API_KEY not found - normalization disabled");
-}
 
 // Token Loader dinamis dari Environment Variables Railway
 function loadTokens() {
@@ -94,79 +83,6 @@ function verifyRole(pin) {
     if (pin === FAMILY_PIN) return { role: 'family', authorized: true };
     if (pin === ADMIN_PIN) return { role: 'admin', authorized: true };
     return { role: null, authorized: false };
-}
-
-// ===== OPENAI NORMALIZATION & VALIDATION =====
-async function normalizeWithOpenAI(title, artist, album) {
-    if (!openaiClient) {
-        return { title, artist, album, normalized: false, reason: 'OpenAI not configured' };
-    }
-
-    try {
-        const prompt = `Bersihkan dan normalkan informasi lagu berikut. Pisahkan dengan jelas antara judul lagu dan metadata lainnya.
-
-Input:
-- Title: "${title}"
-- Artist: "${artist}"
-- Album: "${album}"
-
-Tugas:
-1. Pastikan Title adalah nama lagu asli (buang suffix remix/slowed/nightcore/remix jika dalam title)
-2. Pastikan Artist adalah nama artis utama (buang feat/collab dari artist field)
-3. Identifikasi jenis remix/edit: remix, slowed, slowed+reverb, sped-up, nightcore, phonk, breakbeat, bass-boosted, dll
-4. Validasi apakah ini terlihat seperti lagu sungguhan (bukan random text)
-
-Kembalikan response HANYA dalam format JSON berikut (tanpa markdown):
-{
-  "cleanTitle": "judul lagu tanpa suffix remix",
-  "cleanArtist": "nama artis utama",
-  "editionType": "original/remix/slowed/nightcore/phonk/breakbeat/sped-up/bass-boosted/other/unknown",
-  "isValid": true/false,
-  "confidence": 0.0-1.0,
-  "notes": "catatan singkat"
-}`;
-
-        const response = await openaiClient.chat.completions.create({
-            model: 'gpt-3.5-turbo',
-            messages: [
-                {
-                    role: 'user',
-                    content: prompt
-                }
-            ],
-            temperature: 0.3,
-            max_tokens: 200
-        });
-
-        const content = response.choices[0].message.content;
-        const jsonMatch = content.match(/\{[\s\S]*\}/);
-        
-        if (!jsonMatch) {
-            console.warn('[OpenAI] Response tidak valid JSON');
-            return { title, artist, album, normalized: false, reason: 'Invalid response' };
-        }
-
-        const parsed = JSON.parse(jsonMatch[0]);
-        
-        if (!parsed.isValid || parsed.confidence < 0.5) {
-            console.warn('[OpenAI] Confidence rendah:', parsed.confidence);
-            return { title, artist, album, normalized: false, reason: 'Low confidence' };
-        }
-
-        return {
-            title: parsed.cleanTitle || title,
-            artist: parsed.cleanArtist || artist,
-            album: album,
-            editionType: parsed.editionType || 'unknown',
-            normalized: true,
-            confidence: parsed.confidence,
-            notes: parsed.notes
-        };
-
-    } catch (err) {
-        console.error('[OpenAI Error]:', err.message);
-        return { title, artist, album, normalized: false, reason: 'OpenAI API error' };
-    }
 }
 
 // Helper untuk eksekusi perintah shell berbasis Promise
@@ -387,16 +303,6 @@ app.post('/api/recognize-url', async (req, res) => {
             let youtubeMusic = songResult.result_spotify || '';
             let appleMusic = songResult.result_apple_music || '';
 
-            // Normalisasi dengan OpenAI jika available
-            if (openaiClient && title !== 'Unknown' && artist !== 'Unknown') {
-                const normalized = await normalizeWithOpenAI(title, artist, album);
-                if (normalized.normalized) {
-                    title = normalized.title;
-                    artist = normalized.artist;
-                    console.log(`[OpenAI] Normalized: ${title} - ${artist} (Edition: ${normalized.editionType})`);
-                }
-            }
-
             // Prepare response
             const response = {
                 success: true,
@@ -512,16 +418,6 @@ app.post('/api/recognize-file', upload.single('file'), async (req, res) => {
             let album = songResult.album || '';
             let youtubeMusic = songResult.result_spotify || '';
             let appleMusic = songResult.result_apple_music || '';
-
-            // Normalisasi dengan OpenAI jika available
-            if (openaiClient && title !== 'Unknown' && artist !== 'Unknown') {
-                const normalized = await normalizeWithOpenAI(title, artist, album);
-                if (normalized.normalized) {
-                    title = normalized.title;
-                    artist = normalized.artist;
-                    console.log(`[OpenAI] Normalized: ${title} - ${artist}`);
-                }
-            }
 
             const response = {
                 success: true,
