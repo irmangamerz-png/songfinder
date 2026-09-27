@@ -348,7 +348,7 @@ app.post('/api/recognize-url', async (req, res) => {
         targetCommandTarget = `ytsearch1:${url}`;
     }
 
-    const uniqueId = `audio_${Date.now()}_${Math.random().toString(36.substring(2, 7))}`;
+    const uniqueId = `audio_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
     const outputPattern = path.join(uploadDir, uniqueId);
     const finalMp3Path = `${outputPattern}.mp3`;
 
